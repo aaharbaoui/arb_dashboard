@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Arbitrage Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #111; color: #eee; padding: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+        th, td { padding: 6px; border: 1px solid #444; text-align: center; }
+        .highlight-row { background-color: #222; }
+        .spread-positive { background-color: #152e15; }
+        .buy { color: #00ff99; font-weight: bold; }
+        .sell { color: #ff5050; font-weight: bold; }
+        .min-price { font-weight: bold; color: #1effa3; }
+        .max-price { font-weight: bold; color: #ff7070; }
+        @media (max-width: 768px) {
+            body { padding: 5px; font-size: 12px; }
+            table { font-size: 12px; }
+        }
+    </style>
+</head>
+<body>
+    <h2>⚡ Live Arbitrage Opportunities</h2>
+    <p>Auto-refresh: {{ refresh }}s | Theme: {{ theme }}</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Pair</th>
+                <th>Network</th>
+                <th>Bybit</th>
+                <th>Bitget</th>
+                <th>MEXC</th>
+                <th>HTX</th>
+                <th>Buy</th>
+                <th>Sell</th>
+                <th>Spread %</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for row in table[:10] %}
+            <tr class="highlight-row{% if row.spread >= 1.0 %} spread-positive{% endif %}">
+                <td>{{ row.pair }}</td>
+                <td>{{ row.network }}</td>
+                {% set min_price = row.prices.values()|select('!=', None)|min %}
+                {% set max_price = row.prices.values()|select('!=', None)|max %}
+                {% for ex in ['Bybit', 'Bitget', 'MEXC', 'HTX'] %}
+                    {% if row.prices[ex] is not none %}
+                        <td class="{% if row.prices[ex] == min_price %}min-price{% elif row.prices[ex] == max_price %}max-price{% endif %}">
+                            {{ row.prices[ex] }}
+                        </td>
+                    {% else %}
+                        <td>-</td>
+                    {% endif %}
+                {% endfor %}
+                <td class="buy">{{ row.buy }}</td>
+                <td class="sell">{{ row.sell }}</td>
+                <td class="{% if row.spread >= 1.0 %}buy{% else %}sell{% endif %}">{{ row.spread }}%</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>

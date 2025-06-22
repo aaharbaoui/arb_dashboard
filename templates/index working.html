@@ -1,0 +1,131 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Live Arbitrage Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 15px;
+            background-color: #f4f4f4;
+        }
+
+        h1 {
+            text-align: center;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: #fff;
+            margin-top: 20px;
+            overflow-x: auto;
+        }
+
+        th, td {
+            padding: 10px;
+            border: 1px solid #ddd;
+            text-align: center;
+        }
+
+        th {
+            background-color: #eee;
+        }
+
+        .buy {
+            color: green;
+            font-weight: bold;
+        }
+
+        .sell {
+            color: red;
+            font-weight: bold;
+        }
+
+        .spread-high {
+            background-color: #ffe5e5;
+            font-weight: bold;
+        }
+
+        @media only screen and (max-width: 768px) {
+            table, thead, tbody, th, td, tr {
+                display: block;
+            }
+
+            th {
+                display: none;
+            }
+
+            tr {
+                margin-bottom: 15px;
+                border: 1px solid #ccc;
+                padding: 10px;
+            }
+
+            td {
+                text-align: left;
+                padding-left: 50%;
+                position: relative;
+            }
+
+            td::before {
+                content: attr(data-label);
+                position: absolute;
+                left: 10px;
+                width: 45%;
+                white-space: nowrap;
+                font-weight: bold;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>🔄 Live Arbitrage Dashboard</h1>
+    <table id="arb-table">
+        <thead>
+            <tr>
+                <th>Token</th>
+                <th>Network</th>
+                <th>Bitget</th>
+                <th>Bybit</th>
+                <th>MEXC</th>
+                <th>HTX</th>
+                <th>Best Buy</th>
+                <th>Best Sell</th>
+                <th>Spread</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <script>
+        async function fetchData() {
+            const res = await fetch('/data');
+            const json = await res.json();
+            const table = document.querySelector("#arb-table tbody");
+            table.innerHTML = "";
+            json.table.forEach(row => {
+                const tr = document.createElement("tr");
+                const spreadClass = row.spread >= 1.0 ? "spread-high" : "";
+                tr.innerHTML = `
+                    <td data-label="Token">${row.pair}</td>
+                    <td data-label="Network">${row.network}</td>
+                    <td data-label="Bitget" class="${row.buy === 'Bitget' ? 'buy' : (row.sell === 'Bitget' ? 'sell' : '')}">${row.prices.Bitget?.toFixed(6) ?? '-'}</td>
+                    <td data-label="Bybit" class="${row.buy === 'Bybit' ? 'buy' : (row.sell === 'Bybit' ? 'sell' : '')}">${row.prices.Bybit?.toFixed(6) ?? '-'}</td>
+                    <td data-label="MEXC" class="${row.buy === 'MEXC' ? 'buy' : (row.sell === 'MEXC' ? 'sell' : '')}">${row.prices.MEXC?.toFixed(6) ?? '-'}</td>
+                    <td data-label="HTX" class="${row.buy === 'HTX' ? 'buy' : (row.sell === 'HTX' ? 'sell' : '')}">${row.prices.HTX?.toFixed(6) ?? '-'}</td>
+                    <td data-label="Best Buy"><b>${row.buy}</b></td>
+                    <td data-label="Best Sell"><b>${row.sell}</b></td>
+                    <td data-label="Spread" class="${spreadClass}">${row.spread.toFixed(2)}%</td>
+                `;
+                table.appendChild(tr);
+            });
+        }
+
+        fetchData();
+        setInterval(fetchData, 5000); // refresh every 5 seconds
+    </script>
+</body>
+</html>
