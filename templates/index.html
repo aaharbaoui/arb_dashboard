@@ -2,96 +2,89 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Live Arbitrage</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arbitrage Dashboard</title>
   <style>
-    body { background: #111; color: #fff; font-family: sans-serif; margin:0; padding:16px; }
-    h1 { text-align: center; margin-bottom:12px; }
-
-    table { width:100%; border-collapse:collapse; font-size:14px; }
-    th, td { border:1px solid #333; padding:8px; text-align:center; min-width:80px; }
-    th { background:#222; color:#ccc; }
-
-    .buy { color:#0f0; }
-    .sell { color:#f44; }
-    .highlight { font-weight:bold; }
-    .spread-high { background:#5c0; color:#000; font-weight:bold; }
-
-    @media(max-width:768px){
-      table, thead, tbody, th, td, tr { display:block; }
-      th { display:none; }
-      tr { margin-bottom:12px; border:1px solid #444; padding:8px; }
-      td { position:relative; padding-left:50%; text-align:left; }
-      td::before { 
-        position:absolute; left:8px; width:45%; white-space:nowrap;
-        font-weight:bold; color:#ccc;
-      }
-      td:nth-child(1)::before { content:"Token"; }
-      td:nth-child(2)::before { content:"Network"; }
-      td:nth-child(3)::before { content:"Bybit Buy"; }
-      td:nth-child(4)::before { content:"Bybit Sell"; }
-      td:nth-child(5)::before { content:"Bitget Buy"; }
-      td:nth-child(6)::before { content:"Bitget Sell"; }
-      td:nth-child(7)::before { content:"MEXC Buy"; }
-      td:nth-child(8)::before { content:"MEXC Sell"; }
-      td:nth-child(9)::before { content:"HTX Buy"; }
-      td:nth-child(10)::before { content:"HTX Sell"; }
-      td:nth-child(11)::before { content:"Spread"; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #121212;
+      color: #f0f0f0;
+      margin: 0;
+      padding: 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 14px;
+    }
+    th, td {
+      padding: 6px;
+      text-align: center;
+      border-bottom: 1px solid #333;
+    }
+    th {
+      background-color: #1f1f1f;
+    }
+    .green { color: #00e676; }
+    .red { color: #ff1744; }
+    .highlight { font-weight: bold; }
+    .spread-cell { font-weight: bold; color: yellow; }
+    @media (max-width: 768px) {
+      table, thead, tbody, th, td, tr { font-size: 12px; }
     }
   </style>
 </head>
 <body>
-  <h1>📊 Live Arbitrage</h1>
-  <table id="arb-table">
-    <thead>
-      <tr>
-        <th>Token</th><th>Network</th>
-        <th>Bybit Buy</th><th>Bybit Sell</th>
-        <th>Bitget Buy</th><th>Bitget Sell</th>
-        <th>MEXC Buy</th><th>MEXC Sell</th>
-        <th>HTX Buy</th><th>HTX Sell</th>
-        <th>Spread%</th>
-      </tr>
-    </thead>
-    <tbody id="arb-body"></tbody>
-  </table>
-
+  <h2 style="text-align:center; margin: 10px 0;">🧮 Arbitrage Opportunities</h2>
+  <div style="overflow-x:auto;">
+    <table id="arb-table">
+      <thead>
+        <tr>
+          <th>Token</th>
+          <th>Network</th>
+          <th colspan="2">Bybit</th>
+          <th colspan="2">Bitget</th>
+          <th colspan="2">MEXC</th>
+          <th colspan="2">HTX</th>
+          <th>Spread %</th>
+        </tr>
+        <tr>
+          <th></th><th></th>
+          <th>Buy</th><th>Sell</th>
+          <th>Buy</th><th>Sell</th>
+          <th>Buy</th><th>Sell</th>
+          <th>Buy</th><th>Sell</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
   <script>
-    async function load() {
-      const resp = await fetch("/data");
-      const data = await resp.json();
-      const top = data.table.slice(0,10);
-      const tbody = document.getElementById("arb-body");
+    async function loadData() {
+      const res = await fetch("/data");
+      const data = await res.json();
+      const tbody = document.querySelector("#arb-table tbody");
       tbody.innerHTML = "";
-
-      top.forEach(r => {
-        const { pair, network, prices, spread } = r;
-        const mins = Math.min(...Object.values(prices).filter(v=>v));
-        const maxs = Math.max(...Object.values(prices).filter(v=>v));
+      data.table.slice(0, 10).forEach(row => {
         const tr = document.createElement("tr");
-        const cells = [
-          pair, network,
-          // Bybit buy/sell
-          `<div class="buy${prices.Bybit===mins?' highlight':''}">${prices.Bybit?.toFixed(4)||'-'}</div>
-           <div class="sell${prices.Bybit===maxs?' highlight':''}">${prices.Bybit?.toFixed(4)||'-'}</div>`,
-          // Bitget
-          `<div class="buy${prices.Bitget===mins?' highlight':''}">${prices.Bitget?.toFixed(4)||'-'}</div>
-           <div class="sell${prices.Bitget===maxs?' highlight':''}">${prices.Bitget?.toFixed(4)||'-'}</div>`,
-          // MEXC
-          `<div class="buy${prices.MEXC===mins?' highlight':''}">${prices.MEXC?.toFixed(4)||'-'}</div>
-           <div class="sell${prices.MEXC===maxs?' highlight':''}">${prices.MEXC?.toFixed(4)||'-'}</div>`,
-          // HTX
-          `<div class="buy${prices.HTX===mins?' highlight':''}">${prices.HTX?.toFixed(4)||'-'}</div>
-           <div class="sell${prices.HTX===maxs?' highlight':''}">${prices.HTX?.toFixed(4)||'-'}</div>`,
-          `<div class="${spread>=1?'spread-high':''}">${spread.toFixed(2)}%</div>`
-        ];
-        tr.innerHTML = cells.map(c=>`<td>${c}</td>`).join("");
+        const prices = row.prices;
+        const highlight = (exchange, type) => exchange === row.buy && type === "buy" || exchange === row.sell && type === "sell";
+        tr.innerHTML = `
+          <td>${row.pair}</td>
+          <td>${row.network}</td>
+          ${["Bybit", "Bitget", "MEXC", "HTX"].map(ex => `
+            <td class="${highlight(ex,'buy') ? 'green highlight' : 'green'}">${prices[ex]?.buy?.toFixed(6) || '-'}</td>
+            <td class="${highlight(ex,'sell') ? 'red highlight' : 'red'}">${prices[ex]?.sell?.toFixed(6) || '-'}</td>
+          `).join("")}
+          <td class="spread-cell">${row.spread}%</td>
+        `;
         tbody.appendChild(tr);
       });
     }
-
-    load();
-    setInterval(load, 1000);
+    loadData();
+    setInterval(loadData, {{ refresh * 1000 }});
   </script>
 </body>
 </html>

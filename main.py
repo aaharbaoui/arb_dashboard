@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -10,11 +9,10 @@ load_dotenv()
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
-REFRESH_INTERVAL = int(os.getenv("REFRESH_INTERVAL", 5))
+REFRESH_INTERVAL = int(os.getenv("REFRESH_INTERVAL", 1))  # 1s live refresh
 SPREAD_THRESHOLD = float(os.getenv("SPREAD_THRESHOLD", 1.0))
 TELEGRAM_ENABLED = os.getenv("TELEGRAM_ENABLED", "true").lower() == "true"
 
-# Static memo/network mapping
 token_info = {
     "XRPUSDT": "Memo", "XLMUSDT": "Memo", "STEEMUSDT": "Memo", "HIVEUSDT": "Memo",
     "EOSUSDT": "Tag", "ATOMUSDT": "Memo", "OISTUSDT": "Memo", "AUSDT": "Memo",
@@ -22,7 +20,6 @@ token_info = {
     "AVAXUSDT": "AVAX", "APTUSDT": "APTOS", "DOGEUSDT": "Native", "LTCUSDT": "Native",
     "SOLUSDT": "SOL", "MATICUSDT": "ERC20", "OPUSDT": "ERC20", "ARBUSDT": "ERC20"
 }
-
 top_pairs = list(token_info.keys())
 
 def format_symbol(exchange, pair):
@@ -50,34 +47,50 @@ async def fetch_prices(pair):
                 r = await client.get(url, timeout=5)
                 data = r.json()
                 if name == "Bybit":
-                    prices[name] = float(data["result"][0]["last_price"])
+                    prices[name] = {
+                        "buy": float(data["result"][0]["bid_price"]),
+                        "sell": float(data["result"][0]["ask_price"])
+                    }
                 elif name == "Bitget":
-                    prices[name] = float(data["data"]["close"])
+                    prices[name] = {
+                        "buy": float(data["data"]["buyOne"]),
+                        "sell": float(data["data"]["sellOne"])
+                    }
                 elif name == "MEXC":
-                    prices[name] = float(data["askPrice"])
+                    prices[name] = {
+                        "buy": float(data["bidPrice"]),
+                        "sell": float(data["askPrice"])
+                    }
                 elif name == "HTX":
-                    prices[name] = float(data["tick"]["close"])
+                    prices[name] = {
+                        "buy": float(data["tick"]["bid"][0]),
+                        "sell": float(data["tick"]["ask"][0])
+                    }
             except Exception as e:
                 print(f"Error fetching {pair} from {name}: {e}")
-                prices[name] = None
+                prices[name] = {"buy": None, "sell": None}
     return prices
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse("index.html", {"request": request, "refresh": REFRESH_INTERVAL})
 
 @app.get("/data")
 async def dashboard_data():
     table = []
     for pair in top_pairs:
         prices = await fetch_prices(pair)
-        valid = {k: v for k, v in prices.items() if v}
-        if valid:
-            low_ex = min(valid, key=valid.get)
-            high_ex = max(valid, key=valid.get)
-            spread_pct = ((valid[high_ex] - valid[low_ex]) / valid[low_ex]) * 100 if valid[low_ex] > 0 else 0
+        valid_buys = {ex: prices[ex]["buy"] for ex in prices if prices[ex]["buy"]}
+        valid_sells = {ex: prices[ex]["sell"] for ex in prices if prices[ex]["sell"]}
+
+        if valid_buys and valid_sells:
+            low_ex = min(valid_buys, key=valid_buys.get)
+            high_ex = max(valid_sells, key=valid_sells.get)
+            spread_pct = ((valid_sells[high_ex] - valid_buys[low_ex]) / valid_buys[low_ex]) * 100 if valid_buys[low_ex] > 0 else 0
+
             if TELEGRAM_ENABLED and spread_pct >= SPREAD_THRESHOLD:
-                await send_alert(pair, low_ex, valid[low_ex], high_ex, valid[high_ex], spread_pct)
+                await send_alert(pair, low_ex, valid_buys[low_ex], high_ex, valid_sells[high_ex], spread_pct)
+
             table.append({
                 "pair": pair,
                 "network": token_info.get(pair, "-"),
