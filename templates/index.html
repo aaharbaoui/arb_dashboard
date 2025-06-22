@@ -1,68 +1,63 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Arbitrage Dashboard</title>
   <style>
-    body { font-family: Arial; background: #111; color: #fff; margin: 0; padding: 0; }
-    table { width: 100%; border-collapse: collapse; margin: 10px auto; font-size: 0.95em; }
-    th, td { padding: 8px; text-align: center; border: 1px solid #444; }
+    body { background: #111; color: #fff; font-family: sans-serif; padding: 10px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 6px; text-align: center; }
     th { background: #222; }
-    .green { color: #00ff00; font-weight: bold; }
-    .red { color: #ff4d4d; font-weight: bold; }
-    .highlight { background: #333333; }
+    tr:nth-child(even) { background: #1a1a1a; }
+    .buy { color: #00ff00; }
+    .sell { color: #ff4040; }
+    .highlight { font-weight: bold; background: #003300; }
+    .spread { color: orange; font-weight: bold; }
     @media (max-width: 768px) {
-      table, thead, tbody, th, td, tr { display: block; }
+      table, thead, tbody, th, td, tr { display: block; width: 100%; }
+      td { border-bottom: 1px solid #333; padding: 10px; }
       th { display: none; }
-      td { border: none; border-bottom: 1px solid #333; padding: 10px; }
-      td:before { content: attr(data-label); font-weight: bold; display: block; }
     }
   </style>
 </head>
 <body>
-  <h2 style="text-align:center;">Live Arbitrage Opportunities</h2>
+  <h2>🔁 Arbitrage Dashboard</h2>
   <table id="arb-table">
     <thead>
       <tr>
-        <th>Pair</th>
+        <th>Token</th><th>Network</th>
         <th>Bitget Buy</th><th>Bitget Sell</th>
         <th>MEXC Buy</th><th>MEXC Sell</th>
         <th>HTX Buy</th><th>HTX Sell</th>
-        <th>Spread (%)</th>
+        <th>Spread</th>
       </tr>
     </thead>
     <tbody></tbody>
   </table>
-
   <script>
-    async function loadData() {
+    async function updateTable() {
       const res = await fetch("/data");
-      const json = await res.json();
-      const body = document.querySelector("#arb-table tbody");
-      body.innerHTML = "";
-      json.table.forEach(row => {
+      const data = await res.json();
+      const tbody = document.querySelector("tbody");
+      tbody.innerHTML = "";
+      data.table.forEach(row => {
+        const p = row.prices;
         const tr = document.createElement("tr");
-        const prices = row.prices;
-        const min = Math.min(...Object.values(prices).filter(x => x));
-        const max = Math.max(...Object.values(prices).filter(x => x));
-        const cell = (ex) => {
-          let val = prices[ex];
-          if (!val) return "<td>-</td>";
-          let cls = val === min ? "green" : (val === max ? "red" : "");
-          return `<td class='${cls}'>${val.toFixed(5)}</td>`;
-        };
         tr.innerHTML = `
-          <td>${row.pair}</td>
-          ${cell("bitget")}${cell("bitget")}
-          ${cell("mexc")}${cell("mexc")}
-          ${cell("htx")}${cell("htx")}
-          <td class="highlight">${row.spread}%</td>`;
-        body.appendChild(tr);
+          <td>${row.pair}</td><td>${row.network}</td>
+          <td class="buy ${row.buy === 'bitget' ? 'highlight' : ''}">${p.bitget?.buy ?? '-'}</td>
+          <td class="sell ${row.sell === 'bitget' ? 'highlight' : ''}">${p.bitget?.sell ?? '-'}</td>
+          <td class="buy ${row.buy === 'mexc' ? 'highlight' : ''}">${p.mexc?.buy ?? '-'}</td>
+          <td class="sell ${row.sell === 'mexc' ? 'highlight' : ''}">${p.mexc?.sell ?? '-'}</td>
+          <td class="buy ${row.buy === 'htx' ? 'highlight' : ''}">${p.htx?.buy ?? '-'}</td>
+          <td class="sell ${row.sell === 'htx' ? 'highlight' : ''}">${p.htx?.sell ?? '-'}</td>
+          <td class="spread">${row.spread}%</td>`;
+        tbody.appendChild(tr);
       });
     }
-    setInterval(loadData, 1000);
-    loadData();
+    setInterval(updateTable, 1000);
+    updateTable();
   </script>
 </body>
 </html>
