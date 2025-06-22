@@ -1,90 +1,82 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Arbitrage Dashboard</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #121212;
-      color: #f0f0f0;
-      margin: 0;
-      padding: 0;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 10px;
-      font-size: 14px;
-    }
-    th, td {
-      padding: 6px;
-      text-align: center;
-      border-bottom: 1px solid #333;
-    }
-    th {
-      background-color: #1f1f1f;
-    }
-    .green { color: #00e676; }
-    .red { color: #ff1744; }
-    .highlight { font-weight: bold; }
-    .spread-cell { font-weight: bold; color: yellow; }
-    @media (max-width: 768px) {
-      table, thead, tbody, th, td, tr { font-size: 12px; }
+    body { font-family: Arial; background: #121212; color: #f0f0f0; margin: 0; padding: 0; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+    th, td { border: 1px solid #444; padding: 8px; text-align: center; }
+    th { background: #1e1e1e; position: sticky; top: 0; z-index: 2; }
+    tr.highlight { background-color: #222e1f; }
+    .green { color: #6f6; }
+    .red { color: #f66; }
+    .bold { font-weight: bold; }
+    @media screen and (max-width: 768px) {
+      table { font-size: 12px; }
+      td, th { padding: 5px; }
     }
   </style>
 </head>
 <body>
-  <h2 style="text-align:center; margin: 10px 0;">🧮 Arbitrage Opportunities</h2>
-  <div style="overflow-x:auto;">
-    <table id="arb-table">
-      <thead>
-        <tr>
-          <th>Token</th>
-          <th>Network</th>
-          <th colspan="2">Bybit</th>
-          <th colspan="2">Bitget</th>
-          <th colspan="2">MEXC</th>
-          <th colspan="2">HTX</th>
-          <th>Spread %</th>
-        </tr>
-        <tr>
-          <th></th><th></th>
-          <th>Buy</th><th>Sell</th>
-          <th>Buy</th><th>Sell</th>
-          <th>Buy</th><th>Sell</th>
-          <th>Buy</th><th>Sell</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  </div>
+  <h2 style="text-align:center;">📊 Arbitrage Dashboard</h2>
+  <table id="arb-table">
+    <thead>
+      <tr>
+        <th>Pair</th>
+        <th>Network</th>
+        <th colspan="2">Bybit</th>
+        <th colspan="2">Bitget</th>
+        <th colspan="2">MEXC</th>
+        <th colspan="2">HTX</th>
+        <th>Spread %</th>
+      </tr>
+      <tr>
+        <th></th><th></th>
+        <th class="green">Buy</th><th class="red">Sell</th>
+        <th class="green">Buy</th><th class="red">Sell</th>
+        <th class="green">Buy</th><th class="red">Sell</th>
+        <th class="green">Buy</th><th class="red">Sell</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="table-body"></tbody>
+  </table>
+
   <script>
-    async function loadData() {
-      const res = await fetch("/data");
-      const data = await res.json();
-      const tbody = document.querySelector("#arb-table tbody");
-      tbody.innerHTML = "";
-      data.table.slice(0, 10).forEach(row => {
-        const tr = document.createElement("tr");
-        const prices = row.prices;
-        const highlight = (exchange, type) => exchange === row.buy && type === "buy" || exchange === row.sell && type === "sell";
-        tr.innerHTML = `
-          <td>${row.pair}</td>
-          <td>${row.network}</td>
-          ${["Bybit", "Bitget", "MEXC", "HTX"].map(ex => `
-            <td class="${highlight(ex,'buy') ? 'green highlight' : 'green'}">${prices[ex]?.buy?.toFixed(6) || '-'}</td>
-            <td class="${highlight(ex,'sell') ? 'red highlight' : 'red'}">${prices[ex]?.sell?.toFixed(6) || '-'}</td>
-          `).join("")}
-          <td class="spread-cell">${row.spread}%</td>
-        `;
-        tbody.appendChild(tr);
-      });
+    async function fetchData() {
+      try {
+        const res = await fetch('/data');
+        const data = await res.json();
+        const body = document.getElementById("table-body");
+        body.innerHTML = "";
+
+        data.table.forEach(row => {
+          const tr = document.createElement("tr");
+          if (row.spread >= 1) tr.classList.add("highlight");
+
+          const bestBuy = Object.entries(row.prices).reduce((a, b) => a[1] < b[1] ? a : b, ["", Infinity])[1];
+          const bestSell = Object.entries(row.prices).reduce((a, b) => a[1] > b[1] ? a : b, ["", -Infinity])[1];
+
+          tr.innerHTML = `
+            <td>${row.pair}</td>
+            <td>${row.network}</td>
+            ${['bybit','bitget','mexc','htx'].map(ex => `
+              <td class="${row.prices[ex] === bestBuy ? 'green bold' : 'green'}">${row.prices[ex] ? row.prices[ex].toFixed(4) : '-'}</td>
+              <td class="${row.prices[ex] === bestSell ? 'red bold' : 'red'}">${row.prices[ex] ? row.prices[ex].toFixed(4) : '-'}</td>
+            `).join('')}
+            <td class="${row.spread >= 1 ? 'bold' : ''}">${row.spread}%</td>
+          `;
+          body.appendChild(tr);
+        });
+      } catch (err) {
+        console.error("Error fetching data", err);
+      }
     }
-    loadData();
-    setInterval(loadData, {{ refresh * 1000 }});
+
+    fetchData();
+    setInterval(fetchData, 1000);
   </script>
 </body>
 </html>
