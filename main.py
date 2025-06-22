@@ -1,142 +1,95 @@
 import os
 import asyncio
-import httpx
 from fastapi import FastAPI, Request
-from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
-from typing import List, Dict
+import httpx
+from telegram import send_telegram_alert
 
 load_dotenv()
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
-EXCHANGES = ["bitget", "mexc", "htx"]
-TOKENS = ["XRP", "HIVE", "STEEM", "XLM", "EOS", "ATOM", "XEM", "A", "OIST", "TON"]
-TELEGRAM_ENABLED = os.getenv("TELEGRAM_ENABLED", "true").lower() == "true"
-SPREAD_THRESHOLD = float(os.getenv("SPREAD_THRESHOLD", "0.3"))
-REFRESH_INTERVAL = int(os.getenv("REFRESH_INTERVAL", "1"))
-
-# Memo/tag requirements
-NETWORK_TAGS = {
-    "XRP": "MEMO",
-    "XLM": "MEMO",
-    "ATOM": "MEMO",
-    "EOS": "MEMO",
-    "STEEM": "MEMO",
-    "XEM": "MESSAGE",
-    "A": "APTOS",
-    "OIST": "AVAX",
-}
-
-# Telegram settings
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
+SPREAD_THRESHOLD = float(os.getenv("SPREAD_THRESHOLD", 1.0))
+REFRESH_INTERVAL = int(os.getenv("REFRESH_INTERVAL", 1))
+TELEGRAM_ENABLED = os.getenv("TELEGRAM_ENABLED", "false").lower() == "true"
 
-# In-memory to avoid repeat alerts
-last_alerts = {}
+EXCHANGES = ["bitget", "mexc", "htx"]
 
-async def fetch_price(session, url, exchange, token):
+TOKENS = [
+    {"symbol": "XRP/USDT", "network": "Tag"},
+    {"symbol": "XLM/USDT", "network": "Memo"},
+    {"symbol": "ATOM/USDT", "network": "Memo"},
+    {"symbol": "EOS/USDT", "network": "Memo"},
+    {"symbol": "STEEM/USDT", "network": "Memo"},
+    {"symbol": "HIVE/USDT", "network": "Memo"},
+    {"symbol": "OIST/USDT", "network": "AVAX"},
+    {"symbol": "A/USDT", "network": "APTOS"},
+]
+
+async def fetch_price(client, url):
     try:
-        r = await session.get(url, timeout=5)
-        data = r.json()
-        if exchange == "bitget":
-            return {
-                "buy": float(data["data"]["buyOne"]),
-                "sell": float(data["data"]["sellOne"])
-            }
-        elif exchange == "mexc":
-            return {
-                "buy": float(data["data"]["bid"]),
-                "sell": float(data["data"]["ask"])
-            }
-        elif exchange == "htx":
-            return {
-                "buy": float(data["tick"]["bid"][0]),
-                "sell": float(data["tick"]["ask"][0])
-            }
+        response = await client.get(url, timeout=5)
+        data = response.json()
+        return float(data["data"]["buy"]), float(data["data"]["sell"])
     except Exception as e:
-        return {"buy": None, "sell": None}
+        print(f"Error fetching from {url}: {e}")
+        return None, None
 
-async def get_all_prices():
-    urls = []
-    for token in TOKENS:
-        for exchange in EXCHANGES:
-            if exchange == "bitget":
-                urls.append((f"https://api.bitget.com/api/spot/v1/market/ticker?symbol={token}USDT", exchange, token))
-            elif exchange == "mexc":
-                urls.append((f"https://api.mexc.com/api/v3/ticker/bookTicker?symbol={token}USDT", exchange, token))
-            elif exchange == "htx":
-                urls.append((f"https://api.huobi.pro/market/depth?symbol={token.lower()}usdt&type=step0", exchange, token))
+async def fetch_prices():
+    results = []
 
-    results = {token: {} for token in TOKENS}
-    async with httpx.AsyncClient() as session:
-        tasks = [fetch_price(session, url, exchange, token) for url, exchange, token in urls]
-        price_data = await asyncio.gather(*tasks)
+    async with httpx.AsyncClient() as client:
+        for token in TOKENS:
+            symbol = token["symbol"].replace("/", "_")
+            prices = {}
 
-    for i, (url, exchange, token) in enumerate(urls):
-        results[token][exchange] = price_data[i]
-    return results
+            for ex in EXCHANGES:
+                url = f"https://arb-price-api.onrender.com/{ex}/{symbol}"
+                buy, sell = await fetch_price(client, url)
+                if buy and sell:
+                    prices[ex] = {"buy": buy, "sell": sell}
 
-def calculate_spread(prices):
-    opportunities = []
-    for token, ex_data in prices.items():
-        valid_prices = [(ex, p["buy"], p["sell"]) for ex, p in ex_data.items() if p["buy"] and p["sell"]]
-        if len(valid_prices) < 2:
-            continue
-        lowest = min(valid_prices, key=lambda x: x[1])
-        highest = max(valid_prices, key=lambda x: x[2])
-        spread = ((highest[2] - lowest[1]) / lowest[1]) * 100
-        if spread > 0:
-            opportunities.append({
-                "token": token,
-                "prices": ex_data,
-                "spread": round(spread, 2),
-                "buy_on": lowest[0],
-                "sell_on": highest[0],
-                "network": NETWORK_TAGS.get(token, "")
-            })
-    return sorted(opportunities, key=lambda x: x["spread"], reverse=True)[:19]
+            if len(prices) < 2:
+                continue
 
-async def send_telegram(msg):
-    if not TELEGRAM_ENABLED or not BOT_TOKEN or not CHAT_ID:
-        return
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": msg}
-    try:
-        async with httpx.AsyncClient() as client:
-            await client.post(url, data=payload)
-    except:
-        pass
+            all_buys = [v["buy"] for v in prices.values()]
+            all_sells = [v["sell"] for v in prices.values()]
+            lowest_buy = min(all_buys)
+            highest_sell = max(all_sells)
+            spread = (highest_sell - lowest_buy) / lowest_buy * 100
 
-async def monitor_and_alert():
-    while True:
-        prices = await get_all_prices()
-        opportunities = calculate_spread(prices)
-        for opp in opportunities:
-            key = opp["token"]
-            if opp["spread"] >= SPREAD_THRESHOLD:
-                if key not in last_alerts or abs(opp["spread"] - last_alerts[key]) >= 0.1:
-                    message = (
-                        f"🚨 Arbitrage Alert ({opp['spread']}%)\n"
-                        f"{opp['token']} | Buy on {opp['buy_on']} | Sell on {opp['sell_on']}\n"
-                        f"Network: {opp['network']}"
-                    )
-                    await send_telegram(message)
-                    last_alerts[key] = opp["spread"]
-        await asyncio.sleep(REFRESH_INTERVAL)
+            if spread >= SPREAD_THRESHOLD:
+                buy_on = next(ex for ex in prices if prices[ex]["buy"] == lowest_buy)
+                sell_on = next(ex for ex in prices if prices[ex]["sell"] == highest_sell)
+
+                results.append({
+                    "symbol": token["symbol"],
+                    "network": token["network"],
+                    "spread": round(spread, 2),
+                    "buy_on": buy_on,
+                    "sell_on": sell_on,
+                    "bitget": prices.get("bitget"),
+                    "mexc": prices.get("mexc"),
+                    "htx": prices.get("htx"),
+                })
+
+                if TELEGRAM_ENABLED:
+                    msg = f"🚨 {token['symbol']} | Spread: {spread:.2f}%\nBuy on {buy_on} @ {lowest_buy}\nSell on {sell_on} @ {highest_sell}"
+                    send_telegram_alert(BOT_TOKEN, CHAT_ID, msg)
+
+    results.sort(key=lambda x: x["spread"], reverse=True)
+    return results[:19]
 
 @app.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request):
+async def root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/data")
 async def get_data():
-    prices = await get_all_prices()
-    opportunities = calculate_spread(prices)
-    return JSONResponse(opportunities)
-
-@app.on_event("startup")
-async def start_monitor():
-    asyncio.create_task(monitor_and_alert())
+    data = await fetch_prices()
+    return JSONResponse(content=data)
