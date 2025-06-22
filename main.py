@@ -14,7 +14,7 @@ templates = Jinja2Templates(directory="templates")
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-SPREAD_THRESHOLD = float(os.getenv("SPREAD_THRESHOLD", 1.0))
+SPREAD_THRESHOLD = float(os.getenv("SPREAD_THRESHOLD", 0.3))
 REFRESH_INTERVAL = int(os.getenv("REFRESH_INTERVAL", 1))
 TELEGRAM_ENABLED = os.getenv("TELEGRAM_ENABLED", "false").lower() == "true"
 
@@ -31,28 +31,27 @@ TOKENS = [
     {"symbol": "A/USDT", "network": "APTOS"},
 ]
 
-async def fetch_price(client, url):
+async def fetch_price(client, exchange, symbol):
+    url = f"https://arb-price-api.onrender.com/{exchange}/{symbol}"
     try:
         response = await client.get(url, timeout=5)
         data = response.json()
         return float(data["data"]["buy"]), float(data["data"]["sell"])
     except Exception as e:
-        print(f"Error fetching from {url}: {e}")
+        print(f"{exchange.upper()} {symbol} ERROR: {e}")
         return None, None
 
 async def fetch_prices():
     results = []
-
     async with httpx.AsyncClient() as client:
         for token in TOKENS:
             symbol = token["symbol"].replace("/", "_")
             prices = {}
 
-            for ex in EXCHANGES:
-                url = f"https://arb-price-api.onrender.com/{ex}/{symbol}"
-                buy, sell = await fetch_price(client, url)
+            for exchange in EXCHANGES:
+                buy, sell = await fetch_price(client, exchange, symbol)
                 if buy and sell:
-                    prices[ex] = {"buy": buy, "sell": sell}
+                    prices[exchange] = {"buy": buy, "sell": sell}
 
             if len(prices) < 2:
                 continue
@@ -79,7 +78,7 @@ async def fetch_prices():
                 })
 
                 if TELEGRAM_ENABLED:
-                    msg = f"🚨 {token['symbol']} | Spread: {spread:.2f}%\nBuy on {buy_on} @ {lowest_buy}\nSell on {sell_on} @ {highest_sell}"
+                    msg = f"🚨 {token['symbol']} Spread: {spread:.2f}%\nBuy on {buy_on} @ {lowest_buy}\nSell on {sell_on} @ {highest_sell}"
                     send_telegram_alert(BOT_TOKEN, CHAT_ID, msg)
 
     results.sort(key=lambda x: x["spread"], reverse=True)
@@ -91,5 +90,4 @@ async def root(request: Request):
 
 @app.get("/data")
 async def get_data():
-    data = await fetch_prices()
-    return JSONResponse(content=data)
+    return JSONResponse(content=await fetch_prices())
