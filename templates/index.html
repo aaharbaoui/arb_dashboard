@@ -2,116 +2,140 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Arbitrage Dashboard</title>
+    <title>Live Arbitrage Dashboard</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         body {
-            font-family: 'Segoe UI', sans-serif;
-            background: #0e0e0e;
-            color: #f2f2f2;
-            margin: 0;
+            font-family: sans-serif;
+            background-color: #0f0f0f;
+            color: white;
             padding: 20px;
         }
 
         h1 {
             text-align: center;
-            color: #00ffcc;
+            margin-bottom: 20px;
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 20px;
-            font-size: 14px;
+            overflow-x: auto;
         }
 
         th, td {
-            border: 1px solid #444;
-            padding: 8px;
+            border: 1px solid #333;
+            padding: 6px;
             text-align: center;
+            font-size: 14px;
         }
 
         th {
-            background-color: #1a1a1a;
-        }
-
-        tr.highlight {
-            background-color: #1e3b2f;
+            background-color: #1f1f1f;
         }
 
         .buy {
             color: #00ff00;
-            font-weight: bold;
         }
 
         .sell {
-            color: #ff4d4d;
-            font-weight: bold;
+            color: #ff4040;
         }
 
-        @media (max-width: 768px) {
+        .highlight {
+            font-weight: bold;
+            background-color: #222;
+        }
+
+        @media screen and (max-width: 768px) {
             table, th, td {
                 font-size: 12px;
+            }
+
+            body {
+                padding: 5px;
+            }
+
+            h1 {
+                font-size: 20px;
             }
         }
     </style>
 </head>
 <body>
-    <h1>🔁 Live Arbitrage Opportunities</h1>
-    <table>
+    <h1>📊 Arbitrage Opportunities</h1>
+    <table id="arb-table">
         <thead>
             <tr>
                 <th>Token</th>
                 <th>Spread %</th>
                 <th>Buy On</th>
-                <th>Buy Price</th>
                 <th>Sell On</th>
-                <th>Sell Price</th>
                 <th>Network</th>
+                <th colspan="2">Bitget</th>
+                <th colspan="2">MEXC</th>
+                <th colspan="2">HTX</th>
+            </tr>
+            <tr>
+                <th></th><th></th><th></th><th></th><th></th>
+                <th>Buy</th><th>Sell</th>
+                <th>Buy</th><th>Sell</th>
+                <th>Buy</th><th>Sell</th>
             </tr>
         </thead>
-        <tbody id="data-body">
-            <tr><td colspan="7">Loading...</td></tr>
-        </tbody>
+        <tbody></tbody>
     </table>
 
     <script>
-        const refresh = {{ refresh }};
-        async function fetchData() {
+        async function loadData() {
             try {
-                const res = await fetch("/data");
+                const res = await fetch('/data');
                 const data = await res.json();
-                const tbody = document.getElementById("data-body");
-                tbody.innerHTML = "";
+                const tbody = document.querySelector('#arb-table tbody');
+                tbody.innerHTML = '';
 
-                data.forEach(row => {
-                    const tr = document.createElement("tr");
-                    if (row.spread >= 0.3) tr.classList.add("highlight");
+                data.forEach(item => {
+                    const row = document.createElement('tr');
 
-                    tr.innerHTML = `
-                        <td>${row.symbol}</td>
-                        <td>${row.spread}%</td>
-                        <td>${row.buy_exchange}</td>
-                        <td class="buy">${row.buy_price}</td>
-                        <td>${row.sell_exchange}</td>
-                        <td class="sell">${row.sell_price}</td>
-                        <td>${row.network}</td>
-                    `;
-                    tbody.appendChild(tr);
+                    const prices = item.prices;
+                    const allPrices = [];
+
+                    for (const ex of ['bitget', 'mexc', 'htx']) {
+                        if (prices[ex]) {
+                            allPrices.push({ type: 'buy', val: prices[ex].buy, ex });
+                            allPrices.push({ type: 'sell', val: prices[ex].sell, ex });
+                        }
+                    }
+
+                    const lowestBuy = allPrices.filter(p => p.type === 'buy' && p.val).sort((a, b) => a.val - b.val)[0];
+                    const highestSell = allPrices.filter(p => p.type === 'sell' && p.val).sort((a, b) => b.val - a.val)[0];
+
+                    row.innerHTML += `<td>${item.token}</td>`;
+                    row.innerHTML += `<td>${item.spread}%</td>`;
+                    row.innerHTML += `<td>${item.buy_on}</td>`;
+                    row.innerHTML += `<td>${item.sell_on}</td>`;
+                    row.innerHTML += `<td>${item.network}</td>`;
+
+                    for (const ex of ['bitget', 'mexc', 'htx']) {
+                        const buy = prices[ex]?.buy;
+                        const sell = prices[ex]?.sell;
+
+                        const buyClass = (buy && lowestBuy?.val === buy) ? 'buy highlight' : 'buy';
+                        const sellClass = (sell && highestSell?.val === sell) ? 'sell highlight' : 'sell';
+
+                        row.innerHTML += `<td class="${buyClass}">${buy?.toFixed(4) || '-'}</td>`;
+                        row.innerHTML += `<td class="${sellClass}">${sell?.toFixed(4) || '-'}</td>`;
+                    }
+
+                    tbody.appendChild(row);
                 });
-
-                if (data.length === 0) {
-                    const tr = document.createElement("tr");
-                    tr.innerHTML = `<td colspan="7">No opportunities found.</td>`;
-                    tbody.appendChild(tr);
-                }
             } catch (err) {
-                console.error("Fetch error:", err);
+                console.error("Error fetching data", err);
             }
         }
 
-        setInterval(fetchData, refresh * 1000);
-        fetchData();
+        setInterval(loadData, 1000);
+        loadData();
     </script>
 </body>
 </html>
