@@ -1,59 +1,97 @@
-(venv) amine@192 arb_dashboard % python3 telegram_test.py
-/Users/amine/Downloads/arb_dashboard/venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
-  warnings.warn(
-Traceback (most recent call last):
-  File "/Users/amine/Downloads/arb_dashboard/venv/lib/python3.9/site-packages/urllib3/connection.py", line 198, in _new_conn
-    sock = connection.create_connection(
-  File "/Users/amine/Downloads/arb_dashboard/venv/lib/python3.9/site-packages/urllib3/util/connection.py", line 85, in create_connection
-    raise err
-  File "/Users/amine/Downloads/arb_dashboard/venv/lib/python3.9/site-packages/urllib3/util/connection.py", line 73, in create_connection
-    sock.connect(sa)
-ConnectionRefusedError: [Errno 61] Connection refused
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Live Arbitrage</title>
+  <style>
+    body { background: #111; color: #fff; font-family: sans-serif; margin:0; padding:16px; }
+    h1 { text-align: center; margin-bottom:12px; }
 
-The above exception was the direct cause of the following exception:
+    table { width:100%; border-collapse:collapse; font-size:14px; }
+    th, td { border:1px solid #333; padding:8px; text-align:center; min-width:80px; }
+    th { background:#222; color:#ccc; }
 
-Traceback (most recent call last):
-  File "/Users/amine/Downloads/arb_dashboard/venv/lib/python3.9/site-packages/urllib3/connectionpool.py", line 787, in urlopen
-    response = self._make_request(
-  File "/Users/amine/Downloads/arb_dashboard/venv/lib/python3.9/site-packages/urllib3/connectionpool.py", line 488, in _make_request
-    raise new_e
-  File "/Users/amine/Downloads/arb_dashboard/venv/lib/python3.9/site-packages/urllib3/connectionpool.py", line 464, in _make_request
-    self._validate_conn(conn)
-  File "/Users/amine/Downloads/arb_dashboard/venv/lib/python3.9/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
-    conn.connect()
-  File "/Users/amine/Downloads/arb_dashboard/venv/lib/python3.9/site-packages/urllib3/connection.py", line 753, in connect
-    self.sock = sock = self._new_conn()
-  File "/Users/amine/Downloads/arb_dashboard/venv/lib/python3.9/site-packages/urllib3/connection.py", line 213, in _new_conn
-    raise NewConnectionError(
-urllib3.exceptions.NewConnectionError: <urllib3.connection.HTTPSConnection object at 0x108690d30>: Failed to establish a new connection: [Errno 61] Connection refused
+    .buy { color:#0f0; }
+    .sell { color:#f44; }
+    .highlight { font-weight:bold; }
+    .spread-high { background:#5c0; color:#000; font-weight:bold; }
 
-The above exception was the direct cause of the following exception:
+    @media(max-width:768px){
+      table, thead, tbody, th, td, tr { display:block; }
+      th { display:none; }
+      tr { margin-bottom:12px; border:1px solid #444; padding:8px; }
+      td { position:relative; padding-left:50%; text-align:left; }
+      td::before { 
+        position:absolute; left:8px; width:45%; white-space:nowrap;
+        font-weight:bold; color:#ccc;
+      }
+      td:nth-child(1)::before { content:"Token"; }
+      td:nth-child(2)::before { content:"Network"; }
+      td:nth-child(3)::before { content:"Bybit Buy"; }
+      td:nth-child(4)::before { content:"Bybit Sell"; }
+      td:nth-child(5)::before { content:"Bitget Buy"; }
+      td:nth-child(6)::before { content:"Bitget Sell"; }
+      td:nth-child(7)::before { content:"MEXC Buy"; }
+      td:nth-child(8)::before { content:"MEXC Sell"; }
+      td:nth-child(9)::before { content:"HTX Buy"; }
+      td:nth-child(10)::before { content:"HTX Sell"; }
+      td:nth-child(11)::before { content:"Spread"; }
+    }
+  </style>
+</head>
+<body>
+  <h1>📊 Live Arbitrage</h1>
+  <table id="arb-table">
+    <thead>
+      <tr>
+        <th>Token</th><th>Network</th>
+        <th>Bybit Buy</th><th>Bybit Sell</th>
+        <th>Bitget Buy</th><th>Bitget Sell</th>
+        <th>MEXC Buy</th><th>MEXC Sell</th>
+        <th>HTX Buy</th><th>HTX Sell</th>
+        <th>Spread%</th>
+      </tr>
+    </thead>
+    <tbody id="arb-body"></tbody>
+  </table>
 
-Traceback (most recent call last):
-  File "/Users/amine/Downloads/arb_dashboard/venv/lib/python3.9/site-packages/requests/adapters.py", line 667, in send
-    resp = conn.urlopen(
-  File "/Users/amine/Downloads/arb_dashboard/venv/lib/python3.9/site-packages/urllib3/connectionpool.py", line 841, in urlopen
-    retries = retries.increment(
-  File "/Users/amine/Downloads/arb_dashboard/venv/lib/python3.9/site-packages/urllib3/util/retry.py", line 519, in increment
-    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
-urllib3.exceptions.MaxRetryError: HTTPSConnectionPool(host='api.telegram.org', port=443): Max retries exceeded with url: /bot8109808707:AAFE7IDqTgotM5QM4UNeGgGR-BJ6ATWLfMU/sendMessage (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x108690d30>: Failed to establish a new connection: [Errno 61] Connection refused'))
+  <script>
+    async function load() {
+      const resp = await fetch("/data");
+      const data = await resp.json();
+      const top = data.table.slice(0,10);
+      const tbody = document.getElementById("arb-body");
+      tbody.innerHTML = "";
 
-During handling of the above exception, another exception occurred:
+      top.forEach(r => {
+        const { pair, network, prices, spread } = r;
+        const mins = Math.min(...Object.values(prices).filter(v=>v));
+        const maxs = Math.max(...Object.values(prices).filter(v=>v));
+        const tr = document.createElement("tr");
+        const cells = [
+          pair, network,
+          // Bybit buy/sell
+          `<div class="buy${prices.Bybit===mins?' highlight':''}">${prices.Bybit?.toFixed(4)||'-'}</div>
+           <div class="sell${prices.Bybit===maxs?' highlight':''}">${prices.Bybit?.toFixed(4)||'-'}</div>`,
+          // Bitget
+          `<div class="buy${prices.Bitget===mins?' highlight':''}">${prices.Bitget?.toFixed(4)||'-'}</div>
+           <div class="sell${prices.Bitget===maxs?' highlight':''}">${prices.Bitget?.toFixed(4)||'-'}</div>`,
+          // MEXC
+          `<div class="buy${prices.MEXC===mins?' highlight':''}">${prices.MEXC?.toFixed(4)||'-'}</div>
+           <div class="sell${prices.MEXC===maxs?' highlight':''}">${prices.MEXC?.toFixed(4)||'-'}</div>`,
+          // HTX
+          `<div class="buy${prices.HTX===mins?' highlight':''}">${prices.HTX?.toFixed(4)||'-'}</div>
+           <div class="sell${prices.HTX===maxs?' highlight':''}">${prices.HTX?.toFixed(4)||'-'}</div>`,
+          `<div class="${spread>=1?'spread-high':''}">${spread.toFixed(2)}%</div>`
+        ];
+        tr.innerHTML = cells.map(c=>`<td>${c}</td>`).join("");
+        tbody.appendChild(tr);
+      });
+    }
 
-Traceback (most recent call last):
-  File "/Users/amine/Downloads/arb_dashboard/telegram_test.py", line 14, in <module>
-    response = requests.post(url, data=payload)
-  File "/Users/amine/Downloads/arb_dashboard/venv/lib/python3.9/site-packages/requests/api.py", line 115, in post
-    return request("post", url, data=data, json=json, **kwargs)
-  File "/Users/amine/Downloads/arb_dashboard/venv/lib/python3.9/site-packages/requests/api.py", line 59, in request
-    return session.request(method=method, url=url, **kwargs)
-  File "/Users/amine/Downloads/arb_dashboard/venv/lib/python3.9/site-packages/requests/sessions.py", line 589, in request
-    resp = self.send(prep, **send_kwargs)
-  File "/Users/amine/Downloads/arb_dashboard/venv/lib/python3.9/site-packages/requests/sessions.py", line 703, in send
-    r = adapter.send(request, **kwargs)
-  File "/Users/amine/Downloads/arb_dashboard/venv/lib/python3.9/site-packages/requests/adapters.py", line 700, in send
-    raise ConnectionError(e, request=request)
-requests.exceptions.ConnectionError: HTTPSConnectionPool(host='api.telegram.org', port=443): Max retries exceeded with url: /bot8109808707:AAFE7IDqTgotM5QM4UNeGgGR-BJ6ATWLfMU/sendMessage (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x108690d30>: Failed to establish a new connection: [Errno 61] Connection refused'))
-(venv) amine@192 arb_dashboard % 
-
-
+    load();
+    setInterval(load, 1000);
+  </script>
+</body>
+</html>
