@@ -1,15 +1,25 @@
 import os
 import asyncio
+import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
 import httpx
+from contextlib import asynccontextmanager
 from telegram import send_telegram_alert
 
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+# Load environment
 load_dotenv()
 
-app = FastAPI()
+# App and templates
 templates = Jinja2Templates(directory="templates")
 
 TOKEN = os.getenv("BOT_TOKEN")
@@ -23,42 +33,48 @@ EXCHANGES = {
     "htx": "https://api.huobi.pro/market/tickers"
 }
 
-TOKENS = ["XRP/USDT", "XLM/USDT", "HIVE/USDT", "OIST/USDT", "A/USDT", "EOS/USDT", "STEEM/USDT", "ATOM/USDT", "XEM/USDT", "AID/USDT"]
+TOKENS = [
+    "XRP/USDT", "XLM/USDT", "HIVE/USDT", "OIST/USDT", "A/USDT",
+    "EOS/USDT", "STEEM/USDT", "ATOM/USDT", "XEM/USDT", "AID/USDT"
+]
 
 NETWORK_INFO = {
-    "XRP/USDT": "XRP (Tag)",
-    "XLM/USDT": "XLM (Memo)",
-    "HIVE/USDT": "HIVE (Memo)",
-    "OIST/USDT": "Aptos",
-    "A/USDT": "Aptos",
-    "EOS/USDT": "EOS (Memo)",
-    "STEEM/USDT": "STEEM (Memo)",
-    "ATOM/USDT": "Cosmos",
-    "XEM/USDT": "XEM",
+    "XRP/USDT": "XRP (Tag)", "XLM/USDT": "XLM (Memo)", "HIVE/USDT": "HIVE (Memo)",
+    "OIST/USDT": "Aptos", "A/USDT": "Aptos", "EOS/USDT": "EOS (Memo)",
+    "STEEM/USDT": "STEEM (Memo)", "ATOM/USDT": "Cosmos", "XEM/USDT": "XEM",
     "AID/USDT": "Aptos"
 }
 
 latest_data = []
 
+app = FastAPI()
+
+
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
+
 
 @app.get("/data")
 async def get_data():
     return JSONResponse(latest_data)
 
+
 async def fetch_prices():
     global latest_data
+    logger.info("Started fetch_prices() loop")
     while True:
         results = {ex: {} for ex in EXCHANGES}
         try:
             async with httpx.AsyncClient(timeout=5) as client:
-                responses = await asyncio.gather(*[client.get(url) for url in EXCHANGES.values()], return_exceptions=True)
+                responses = await asyncio.gather(
+                    *[client.get(url) for url in EXCHANGES.values()],
+                    return_exceptions=True
+                )
 
                 for (name, _), resp in zip(EXCHANGES.items(), responses):
                     if isinstance(resp, Exception):
-                        print(f"[ERROR] {name} fetch failed: {resp}")
+                        logger.error(f"{name} fetch failed: {resp}")
                         continue
                     try:
                         data = resp.json()
@@ -66,23 +82,35 @@ async def fetch_prices():
                             for item in data.get("data", []):
                                 s = item.get("symbol", "").upper()
                                 if s.endswith("USDT"):
-                                    results[name][s] = {"buy": float(item["buyOne"]), "sell": float(item["sellOne"])}
+                                    results[name][s] = {
+                                        "buy": float(item["buyOne"]),
+                                        "sell": float(item["sellOne"])
+                                    }
                         elif name == "mexc":
                             for item in data:
                                 s = item.get("symbol", "").upper()
                                 if s.endswith("USDT"):
-                                    results[name][s] = {"buy": float(item["bidPrice"]), "sell": float(item["askPrice"])}
+                                    results[name][s] = {
+                                        "buy": float(item["bidPrice"]),
+                                        "sell": float(item["askPrice"])
+                                    }
                         elif name == "htx":
                             for item in data.get("data", []):
                                 s = item.get("symbol", "").upper().replace("USDT", "/USDT")
-                                results[name][s] = {"buy": float(item["bid"]), "sell": float(item["ask"])}
+                                results[name][s] = {
+                                    "buy": float(item["bid"]),
+                                    "sell": float(item["ask"])
+                                }
                     except Exception as e:
-                        print(f"[ERROR] parsing {name}: {e}")
+                        logger.error(f"Error parsing {name} response: {e}")
 
             rows = []
             for token in TOKENS:
                 pair = token.replace("/", "")
-                prices = {ex: results[ex].get(pair if ex != "htx" else token, {}) for ex in EXCHANGES}
+                prices = {
+                    ex: results[ex].get(pair if ex != "htx" else token, {})
+                    for ex in EXCHANGES
+                }
 
                 if not all("buy" in p and "sell" in p for p in prices.values()):
                     continue
@@ -107,14 +135,28 @@ async def fetch_prices():
                 rows.append(row)
 
                 if spread >= SPREAD_THRESHOLD:
-                    msg = f"📊 {token} Spread: {round(spread, 2)}%\nBuy on {best_buy[0]} @ {best_buy[1]}\nSell on {best_sell[0]} @ {best_sell[1]}"
+                    msg = (
+                        f"📊 {token} Spread: {round(spread, 2)}%\n"
+                        f"Buy on {best_buy[0]} @ {best_buy[1]}\n"
+                        f"Sell on {best_sell[0]} @ {best_sell[1]}"
+                    )
+                    logger.info(f"Alert: {msg}")
                     send_telegram_alert(TOKEN, CHAT_ID, msg)
 
             latest_data = sorted(rows, key=lambda x: x["spread"], reverse=True)[:19]
+            logger.info(f"Updated arbitrage list with {len(latest_data)} entries")
         except Exception as e:
-            print(f"[ERROR] main loop: {e}")
+            logger.exception(f"Main fetch loop error: {e}")
         await asyncio.sleep(REFRESH_INTERVAL)
 
-@app.on_event("startup")
-async def start_up():
-    asyncio.create_task(fetch_prices())
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("App lifespan starting")
+    task = asyncio.create_task(fetch_prices())
+    yield
+    task.cancel()
+    logger.info("App lifespan ended")
+
+# Reassign app with lifespan
+app = FastAPI(lifespan=lifespan)
