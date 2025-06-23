@@ -16,16 +16,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Load .env if available
+# Load environment variables
 load_dotenv()
 
-# Set your BOT and CHAT ID here
 TOKEN = os.getenv("BOT_TOKEN", "8109808707:AAFE7IDqTgotM5QM4UNeGgGR-BJ6ATWLfMU")
 CHAT_ID = os.getenv("CHAT_ID", "6422403122")
 REFRESH_INTERVAL = int(os.getenv("REFRESH_INTERVAL", 3))
 SPREAD_THRESHOLD = float(os.getenv("SPREAD_THRESHOLD", 0.01))
 
-# Templates and tokens setup
 templates = Jinja2Templates(directory="templates")
 
 EXCHANGES = {
@@ -48,18 +46,23 @@ NETWORK_INFO = {
 
 latest_data = []
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("App lifespan starting")
+    task = asyncio.create_task(fetch_prices())
+    yield
+    task.cancel()
+    logger.info("App lifespan ended")
 
+app = FastAPI(lifespan=lifespan)
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
-
 @app.get("/data")
 async def get_data():
     return JSONResponse(latest_data)
-
 
 async def fetch_prices():
     global latest_data
@@ -90,10 +93,12 @@ async def fetch_prices():
                         elif name == "mexc":
                             for item in data:
                                 s = item.get("symbol", "").upper()
-                                if s.endswith("USDT"):
+                                bid = item.get("bidPrice")
+                                ask = item.get("askPrice")
+                                if s.endswith("USDT") and bid is not None and ask is not None:
                                     results[name][s] = {
-                                        "buy": float(item["bidPrice"]),
-                                        "sell": float(item["askPrice"])
+                                        "buy": float(bid),
+                                        "sell": float(ask)
                                     }
                         elif name == "htx":
                             for item in data.get("data", []):
@@ -149,15 +154,3 @@ async def fetch_prices():
         except Exception as e:
             logger.exception(f"Main fetch loop error: {e}")
         await asyncio.sleep(REFRESH_INTERVAL)
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    logger.info("App lifespan starting")
-    task = asyncio.create_task(fetch_prices())
-    yield
-    task.cancel()
-    logger.info("App lifespan ended")
-
-
-app = FastAPI(lifespan=lifespan)
