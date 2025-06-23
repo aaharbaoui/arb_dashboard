@@ -19,7 +19,9 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
-TOKEN = os.getenv("BOT_TOKEN", "8109808707:AAFE7IDqTgotM5QM4UNeGgGR-BJ6ATWLfMU")
+TOKEN = os.getenv("BOT_TOKEN")
+if not TOKEN:
+    raise ValueError("BOT_TOKEN must be set in the environment")
 CHAT_ID = os.getenv("CHAT_ID", "6422403122")
 REFRESH_INTERVAL = int(os.getenv("REFRESH_INTERVAL", 3))
 SPREAD_THRESHOLD = float(os.getenv("SPREAD_THRESHOLD", 0.01))
@@ -33,15 +35,33 @@ EXCHANGES = {
 }
 
 TOKENS = [
-    "XRP/USDT", "XLM/USDT", "HIVE/USDT", "OIST/USDT", "A/USDT",
-    "EOS/USDT", "STEEM/USDT", "ATOM/USDT", "XEM/USDT", "AID/USDT"
+   "XRP/USDT", "BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT", "DOGE/USDT", "ADA/USDT", "AVAX/USDT", "TRX/USDT", "LINK/USDT",
+    "MATIC/USDT", "LTC/USDT", "DOT/USDT", "SHIB/USDT", "XLM/USDT", "BCH/USDT", "ATOM/USDT", "XMR/USDT", "APT/USDT", "LDO/USDT",
+    "ARB/USDT", "OP/USDT", "NEAR/USDT", "TON/USDT", "ICP/USDT", "SAND/USDT", "AAVE/USDT", "GRT/USDT", "RUNE/USDT", "FTM/USDT",
+    "EOS/USDT", "MKR/USDT", "SNX/USDT", "INJ/USDT", "CRV/USDT", "COMP/USDT", "GMT/USDT", "ENJ/USDT", "STORJ/USDT", "HBAR/USDT",
+    "DYDX/USDT", "HIVE/USDT", "STEEM/USDT", "KAVA/USDT", "COTI/USDT", "XEM/USDT", "ZEC/USDT", "NEO/USDT", "ZIL/USDT", "FLOW/USDT",
+    "UMA/USDT", "IOTA/USDT", "1INCH/USDT", "BAT/USDT", "QNT/USDT", "WOO/USDT", "GALA/USDT", "CHZ/USDT", "DODO/USDT", "AKRO/USDT",
+    "VET/USDT", "FLUX/USDT", "CELO/USDT", "LRC/USDT", "OCEAN/USDT", "API3/USDT", "BAND/USDT", "CTXC/USDT", "DUSK/USDT", "ARPA/USDT",
+    "BEL/USDT", "SKL/USDT", "YFI/USDT", "ALPHA/USDT", "TLM/USDT", "VRA/USDT", "BICO/USDT", "JASMY/USDT", "NKN/USDT", "RSR/USDT",
+    "STMX/USDT", "XVS/USDT", "REN/USDT", "KSM/USDT", "BAL/USDT", "BLZ/USDT", "PERP/USDT", "C98/USDT", "LINA/USDT", "ORN/USDT",
+    "DENT/USDT", "MBL/USDT", "REEF/USDT", "SLP/USDT", "WIN/USDT", "POLYX/USDT", "ID/USDT", "MULTI/USDT", "AID/USDT", "A/USDT"
 ]
 
 NETWORK_INFO = {
     "XRP/USDT": "XRP (Tag)", "XLM/USDT": "XLM (Memo)", "HIVE/USDT": "HIVE (Memo)",
     "OIST/USDT": "Aptos", "A/USDT": "Aptos", "EOS/USDT": "EOS (Memo)",
     "STEEM/USDT": "STEEM (Memo)", "ATOM/USDT": "Cosmos", "XEM/USDT": "XEM",
-    "AID/USDT": "Aptos"
+    "AID/USDT": "Aptos",
+    "BTC/USDT": "BTC",
+    "ETH/USDT": "Ethereum",
+    "BNB/USDT": "BSC",
+    "SOL/USDT": "Solana",
+    "DOGE/USDT": "DOGE",
+    "ADA/USDT": "Cardano",
+    "AVAX/USDT": "Avalanche",
+    "TRX/USDT": "TRON (Tag)",
+    "MATIC/USDT": "Polygon",
+    "NEO/USDT": "NEO",
 }
 
 latest_data = []
@@ -119,6 +139,7 @@ async def fetch_prices():
                 }
 
                 if not all("buy" in p and "sell" in p for p in prices.values()):
+                    logger.debug(f"Missing price data for: {token} -> {prices}")
                     continue
 
                 buys = [(ex, p["buy"]) for ex, p in prices.items()]
@@ -149,7 +170,7 @@ async def fetch_prices():
                     logger.info(f"Alert: {msg}")
                     send_telegram_alert(TOKEN, CHAT_ID, msg)
 
-            latest_data = sorted(rows, key=lambda x: x["spread"], reverse=True)[:19]
+            latest_data = sorted(rows, key=lambda x: x["spread"], reverse=True)[:10]
             logger.info(f"Updated arbitrage list with {len(latest_data)} entries")
         except Exception as e:
             logger.exception(f"Main fetch loop error: {e}")
