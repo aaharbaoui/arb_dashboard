@@ -2,8 +2,18 @@ services:
   - type: web
     name: arbitrage-dashboard
     env: python
-    buildCommand: ""
+    buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port 10000
     envVars:
       - key: PORT
         value: 10000
+      - key: BOT_TOKEN
+        value: your_bot_token_here
+      - key: CHAT_ID
+        value: your_chat_id_here
+      - key: REFRESH_INTERVAL
+        value: "1"
+      - key: SPREAD_THRESHOLD
+        value: "0.3"
+      - key: TELEGRAM_ENABLED
+        value: "true"
