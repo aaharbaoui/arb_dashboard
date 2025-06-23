@@ -65,6 +65,8 @@ NETWORK_INFO = {
 }
 
 latest_data = []
+recent_alerts = set()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -163,7 +165,8 @@ async def fetch_prices():
 
                 rows.append(row)
 
-                if spread >= SPREAD_THRESHOLD:
+                alert_key = f"{token}:{best_buy[0]}->{best_sell[0]}"
+                if spread >= SPREAD_THRESHOLD and alert_key not in recent_alerts:
                     msg = (
                         f"📊 {token} Spread: {round(spread, 2)}%\n"
                         f"Buy on {best_buy[0]} @ {best_buy[1]}\n"
@@ -171,6 +174,12 @@ async def fetch_prices():
                     )
                     logger.info(f"Alert: {msg}")
                     send_telegram_alert(TOKEN, CHAT_ID, msg)
+                    recent_alerts.add(alert_key)
+
+                    # Optional cleanup: clear after reaching size limit
+                    if len(recent_alerts) > 1000:
+                        recent_alerts.clear()
+
 
             latest_data = sorted(rows, key=lambda x: x["spread"], reverse=True)[:10]
             logger.info(f"Updated arbitrage list with {len(latest_data)} entries")
