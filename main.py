@@ -16,16 +16,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Load environment
+# Load .env if available
 load_dotenv()
 
-# App and templates
-templates = Jinja2Templates(directory="templates")
+# Set your BOT and CHAT ID here
+TOKEN = os.getenv("BOT_TOKEN", "8109808707:AAFE7IDqTgotM5QM4UNeGgGR-BJ6ATWLfMU")
+CHAT_ID = os.getenv("CHAT_ID", "6422403122")
+REFRESH_INTERVAL = int(os.getenv("REFRESH_INTERVAL", 3))
+SPREAD_THRESHOLD = float(os.getenv("SPREAD_THRESHOLD", 0.01))
 
-TOKEN = os.getenv("BOT_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
-REFRESH_INTERVAL = int(os.getenv("REFRESH_INTERVAL", 1))
-SPREAD_THRESHOLD = float(os.getenv("SPREAD_THRESHOLD", 0.3))
+# Templates and tokens setup
+templates = Jinja2Templates(directory="templates")
 
 EXCHANGES = {
     "bitget": "https://api.bitget.com/api/spot/v1/market/tickers",
@@ -158,5 +159,5 @@ async def lifespan(app: FastAPI):
     task.cancel()
     logger.info("App lifespan ended")
 
-# Reassign app with lifespan
+
 app = FastAPI(lifespan=lifespan)

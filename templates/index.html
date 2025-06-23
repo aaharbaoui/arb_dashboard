@@ -1,141 +1,144 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Live Arbitrage Dashboard</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        body {
-            font-family: sans-serif;
-            background-color: #0f0f0f;
-            color: white;
-            padding: 20px;
-        }
+  <meta charset="UTF-8" />
+  <title>📊 Arbitrage Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      font-family: sans-serif;
+      background-color: #0f0f0f;
+      color: white;
+      padding: 20px;
+    }
 
-        h1 {
-            text-align: center;
-            margin-bottom: 20px;
-        }
+    h1 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            overflow-x: auto;
-        }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow-x: auto;
+    }
 
-        th, td {
-            border: 1px solid #333;
-            padding: 6px;
-            text-align: center;
-            font-size: 14px;
-        }
+    th, td {
+      border: 1px solid #333;
+      padding: 6px;
+      text-align: center;
+      font-size: 14px;
+    }
 
-        th {
-            background-color: #1f1f1f;
-        }
+    th {
+      background-color: #1f1f1f;
+    }
 
-        .buy {
-            color: #00ff00;
-        }
+    .buy {
+      color: #00ff00;
+    }
 
-        .sell {
-            color: #ff4040;
-        }
+    .sell {
+      color: #ff4040;
+    }
 
-        .highlight {
-            font-weight: bold;
-            background-color: #222;
-        }
+    .highlight {
+      font-weight: bold;
+      background-color: #222;
+    }
 
-        @media screen and (max-width: 768px) {
-            table, th, td {
-                font-size: 12px;
-            }
+    @media screen and (max-width: 768px) {
+      table, th, td {
+        font-size: 12px;
+      }
 
-            body {
-                padding: 5px;
-            }
+      body {
+        padding: 5px;
+      }
 
-            h1 {
-                font-size: 20px;
-            }
-        }
-    </style>
+      h1 {
+        font-size: 20px;
+      }
+    }
+  </style>
 </head>
 <body>
-    <h1>📊 Arbitrage Opportunities</h1>
-    <table id="arb-table">
-        <thead>
-            <tr>
-                <th>Token</th>
-                <th>Spread %</th>
-                <th>Buy On</th>
-                <th>Sell On</th>
-                <th>Network</th>
-                <th colspan="2">Bitget</th>
-                <th colspan="2">MEXC</th>
-                <th colspan="2">HTX</th>
-            </tr>
-            <tr>
-                <th></th><th></th><th></th><th></th><th></th>
-                <th>Buy</th><th>Sell</th>
-                <th>Buy</th><th>Sell</th>
-                <th>Buy</th><th>Sell</th>
-            </tr>
-        </thead>
-        <tbody></tbody>
-    </table>
+  <h1>📊 Arbitrage Opportunities</h1>
+  <table id="arb-table">
+    <thead>
+      <tr>
+        <th>Token</th>
+        <th>Spread %</th>
+        <th>Buy On</th>
+        <th>Sell On</th>
+        <th>Network</th>
+        <th colspan="2">Bitget</th>
+        <th colspan="2">MEXC</th>
+        <th colspan="2">HTX</th>
+      </tr>
+      <tr>
+        <th></th><th></th><th></th><th></th><th></th>
+        <th>Buy</th><th>Sell</th>
+        <th>Buy</th><th>Sell</th>
+        <th>Buy</th><th>Sell</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
-    <script>
-        async function loadData() {
-            try {
-                const res = await fetch('/data');
-                const data = await res.json();
-                const tbody = document.querySelector('#arb-table tbody');
-                tbody.innerHTML = '';
+  <script>
+    async function loadData() {
+      try {
+        const res = await fetch('/data');
+        const data = await res.json();
+        const tbody = document.querySelector('#arb-table tbody');
+        tbody.innerHTML = '';
 
-                data.forEach(item => {
-                    const row = document.createElement('tr');
+        data.forEach(item => {
+          const row = document.createElement('tr');
+          const prices = {
+            bitget: item.bitget,
+            mexc: item.mexc,
+            htx: item.htx
+          };
 
-                    const prices = item.prices;
-                    const allPrices = [];
-
-                    for (const ex of ['bitget', 'mexc', 'htx']) {
-                        if (prices[ex]) {
-                            allPrices.push({ type: 'buy', val: prices[ex].buy, ex });
-                            allPrices.push({ type: 'sell', val: prices[ex].sell, ex });
-                        }
-                    }
-
-                    const lowestBuy = allPrices.filter(p => p.type === 'buy' && p.val).sort((a, b) => a.val - b.val)[0];
-                    const highestSell = allPrices.filter(p => p.type === 'sell' && p.val).sort((a, b) => b.val - a.val)[0];
-
-                    row.innerHTML += `<td>${item.token}</td>`;
-                    row.innerHTML += `<td>${item.spread}%</td>`;
-                    row.innerHTML += `<td>${item.buy_on}</td>`;
-                    row.innerHTML += `<td>${item.sell_on}</td>`;
-                    row.innerHTML += `<td>${item.network}</td>`;
-
-                    for (const ex of ['bitget', 'mexc', 'htx']) {
-                        const buy = prices[ex]?.buy;
-                        const sell = prices[ex]?.sell;
-
-                        const buyClass = (buy && lowestBuy?.val === buy) ? 'buy highlight' : 'buy';
-                        const sellClass = (sell && highestSell?.val === sell) ? 'sell highlight' : 'sell';
-
-                        row.innerHTML += `<td class="${buyClass}">${buy?.toFixed(4) || '-'}</td>`;
-                        row.innerHTML += `<td class="${sellClass}">${sell?.toFixed(4) || '-'}</td>`;
-                    }
-
-                    tbody.appendChild(row);
-                });
-            } catch (err) {
-                console.error("Error fetching data", err);
+          const allPrices = [];
+          for (const ex of ['bitget', 'mexc', 'htx']) {
+            if (prices[ex]) {
+              allPrices.push({ type: 'buy', val: prices[ex].buy, ex });
+              allPrices.push({ type: 'sell', val: prices[ex].sell, ex });
             }
-        }
+          }
 
-        setInterval(loadData, 1000);
-        loadData();
-    </script>
+          const lowestBuy = allPrices.filter(p => p.type === 'buy').sort((a, b) => a.val - b.val)[0];
+          const highestSell = allPrices.filter(p => p.type === 'sell').sort((a, b) => b.val - a.val)[0];
+
+          row.innerHTML += `<td>${item.token}</td>`;
+          row.innerHTML += `<td>${item.spread}%</td>`;
+          row.innerHTML += `<td>${item.buy_on}</td>`;
+          row.innerHTML += `<td>${item.sell_on}</td>`;
+          row.innerHTML += `<td>${item.network}</td>`;
+
+          for (const ex of ['bitget', 'mexc', 'htx']) {
+            const buy = prices[ex]?.buy;
+            const sell = prices[ex]?.sell;
+
+            const buyClass = (buy && lowestBuy?.val === buy) ? 'buy highlight' : 'buy';
+            const sellClass = (sell && highestSell?.val === sell) ? 'sell highlight' : 'sell';
+
+            row.innerHTML += `<td class="${buyClass}">${buy?.toFixed(4) || '-'}</td>`;
+            row.innerHTML += `<td class="${sellClass}">${sell?.toFixed(4) || '-'}</td>`;
+          }
+
+          tbody.appendChild(row);
+        });
+      } catch (err) {
+        console.error("Error loading data:", err);
+      }
+    }
+
+    setInterval(loadData, 1000);
+    loadData();
+  </script>
 </body>
 </html>
