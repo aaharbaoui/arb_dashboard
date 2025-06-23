@@ -146,6 +146,8 @@ async def fetch_prices():
                 sells = [(ex, p["sell"]) for ex, p in prices.items()]
                 best_buy = min(buys, key=lambda x: x[1])
                 best_sell = max(sells, key=lambda x: x[1])
+                if best_buy[0] == best_sell[0]:
+                    continue
                 spread = (best_sell[1] - best_buy[1]) / best_buy[1] * 100
 
                 row = {
