@@ -1,188 +1,150 @@
-import os
-import asyncio
-import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from dotenv import load_dotenv
+from utils.exchange_client import fetch_from, ENABLED, API_INFO, get_binance_asset_status
+from utils.cache import TimedCache
+import asyncio
 import httpx
-from contextlib import asynccontextmanager
-from telegram import send_telegram_alert
+from notifier import send_spread_alert
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s"
-)
-logger = logging.getLogger(__name__)
-
-# Load environment variables
-load_dotenv()
-
-TOKEN = os.getenv("BOT_TOKEN")
-if not TOKEN:
-    raise ValueError("BOT_TOKEN must be set in the environment")
-CHAT_ID = os.getenv("CHAT_ID", "6422403122")
-REFRESH_INTERVAL = int(os.getenv("REFRESH_INTERVAL", 3))
-SPREAD_THRESHOLD = float(os.getenv("SPREAD_THRESHOLD", 0.01))
-
+app = FastAPI()
+app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-EXCHANGES = {
-    "bitget": "https://api.bitget.com/api/spot/v1/market/tickers",
-    "mexc": "https://api.mexc.com/api/v3/ticker/bookTicker",
-    "htx": "https://api.huobi.pro/market/tickers"
-}
+EXCHANGES = list(ENABLED.keys())
+token_cache = TimedCache(ttl_seconds=600)  # Cache token list for 10 minutes
 
-TOKENS = [
-   "XRP/USDT", "BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT", "DOGE/USDT", "ADA/USDT", "AVAX/USDT", "TRX/USDT", "LINK/USDT",
-    "MATIC/USDT", "LTC/USDT", "DOT/USDT", "SHIB/USDT", "XLM/USDT", "BCH/USDT", "ATOM/USDT", "XMR/USDT", "APT/USDT", "LDO/USDT",
-    "ARB/USDT", "OP/USDT", "NEAR/USDT", "TON/USDT", "ICP/USDT", "SAND/USDT", "AAVE/USDT", "GRT/USDT", "RUNE/USDT", "FTM/USDT",
-    "EOS/USDT", "MKR/USDT", "SNX/USDT", "INJ/USDT", "CRV/USDT", "COMP/USDT", "GMT/USDT", "ENJ/USDT", "STORJ/USDT", "HBAR/USDT",
-    "DYDX/USDT", "HIVE/USDT", "STEEM/USDT", "KAVA/USDT", "COTI/USDT", "XEM/USDT", "ZEC/USDT", "NEO/USDT", "ZIL/USDT", "FLOW/USDT",
-    "UMA/USDT", "IOTA/USDT", "1INCH/USDT", "BAT/USDT", "QNT/USDT", "WOO/USDT", "GALA/USDT", "CHZ/USDT", "DODO/USDT", "AKRO/USDT",
-    "VET/USDT", "FLUX/USDT", "CELO/USDT", "LRC/USDT", "OCEAN/USDT", "API3/USDT", "BAND/USDT", "CTXC/USDT", "DUSK/USDT", "ARPA/USDT",
-    "BEL/USDT", "SKL/USDT", "YFI/USDT", "ALPHA/USDT", "TLM/USDT", "VRA/USDT", "BICO/USDT", "JASMY/USDT", "NKN/USDT", "RSR/USDT",
-    "STMX/USDT", "XVS/USDT", "REN/USDT", "KSM/USDT", "BAL/USDT", "BLZ/USDT", "PERP/USDT", "C98/USDT", "LINA/USDT", "ORN/USDT",
-    "DENT/USDT", "MBL/USDT", "REEF/USDT", "SLP/USDT", "WIN/USDT", "POLYX/USDT", "ID/USDT", "MULTI/USDT", "AID/USDT", "A/USDT"
-]
-
-NETWORK_INFO = {
-    "XRP/USDT": "XRP (Tag)", "XLM/USDT": "XLM (Memo)", "HIVE/USDT": "HIVE (Memo)",
-    "OIST/USDT": "Aptos", "A/USDT": "Aptos", "EOS/USDT": "EOS (Memo)",
-    "STEEM/USDT": "STEEM (Memo)", "ATOM/USDT": "Cosmos", "XEM/USDT": "XEM",
-    "AID/USDT": "Aptos",
-    "BTC/USDT": "BTC",
-    "ETH/USDT": "Ethereum",
-    "BNB/USDT": "BSC",
-    "SOL/USDT": "Solana",
-    "DOGE/USDT": "DOGE",
-    "ADA/USDT": "Cardano",
-    "AVAX/USDT": "Avalanche",
-    "TRX/USDT": "TRON (Tag)",
-    "MATIC/USDT": "Polygon",
-    "NEO/USDT": "NEO",
-}
-
-latest_data = []
-recent_alerts = set()
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    logger.info("App lifespan starting")
-    task = asyncio.create_task(fetch_prices())
-    yield
-    task.cancel()
-    logger.info("App lifespan ended")
-
-app = FastAPI(lifespan=lifespan)
-
-@app.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
-
-@app.get("/data")
-async def get_data():
-    return JSONResponse(latest_data)
-
-async def fetch_prices():
-    global latest_data
-    logger.info("Started fetch_prices() loop")
+# 🔁 Background task: runs every 60 seconds
+async def run_top5_alerts_background():
     while True:
-        results = {ex: {} for ex in EXCHANGES}
         try:
-            async with httpx.AsyncClient(timeout=5) as client:
-                responses = await asyncio.gather(
-                    *[client.get(url) for url in EXCHANGES.values()],
-                    return_exceptions=True
-                )
-
-                for (name, _), resp in zip(EXCHANGES.items(), responses):
-                    if isinstance(resp, Exception):
-                        logger.error(f"{name} fetch failed: {resp}")
-                        continue
-                    try:
-                        data = resp.json()
-                        if name == "bitget":
-                            for item in data.get("data", []):
-                                s = item.get("symbol", "").upper()
-                                if s.endswith("USDT"):
-                                    results[name][s] = {
-                                        "buy": float(item["buyOne"]),
-                                        "sell": float(item["sellOne"])
-                                    }
-                        elif name == "mexc":
-                            for item in data:
-                                s = item.get("symbol", "").upper()
-                                bid = item.get("bidPrice")
-                                ask = item.get("askPrice")
-                                if s.endswith("USDT") and bid is not None and ask is not None:
-                                    results[name][s] = {
-                                        "buy": float(bid),
-                                        "sell": float(ask)
-                                    }
-                        elif name == "htx":
-                            for item in data.get("data", []):
-                                s = item.get("symbol", "").upper().replace("USDT", "/USDT")
-                                results[name][s] = {
-                                    "buy": float(item["bid"]),
-                                    "sell": float(item["ask"])
-                                }
-                    except Exception as e:
-                        logger.error(f"Error parsing {name} response: {e}")
-
-            rows = []
-            for token in TOKENS:
-                pair = token.replace("/", "")
-                prices = {
-                    ex: results[ex].get(pair if ex != "htx" else token, {})
-                    for ex in EXCHANGES
-                }
-
-                if not all("buy" in p and "sell" in p for p in prices.values()):
-                    logger.debug(f"Missing price data for: {token} -> {prices}")
-                    continue
-
-                buys = [(ex, p["buy"]) for ex, p in prices.items()]
-                sells = [(ex, p["sell"]) for ex, p in prices.items()]
-                best_buy = min(buys, key=lambda x: x[1])
-                best_sell = max(sells, key=lambda x: x[1])
-                if best_buy[0] == best_sell[0]:
-                    continue
-                spread = (best_sell[1] - best_buy[1]) / best_buy[1] * 100
-
-                row = {
-                    "token": token,
-                    "spread": round(spread, 2),
-                    "buy_on": best_buy[0],
-                    "sell_on": best_sell[0],
-                    "network": NETWORK_INFO.get(token, "-"),
-                    "bitget": prices["bitget"],
-                    "mexc": prices["mexc"],
-                    "htx": prices["htx"]
-                }
-
-                rows.append(row)
-
-                alert_key = f"{token}:{best_buy[0]}->{best_sell[0]}"
-                if spread >= SPREAD_THRESHOLD and alert_key not in recent_alerts:
-                    msg = (
-                        f"📊 {token} Spread: {round(spread, 2)}%\n"
-                        f"Buy on {best_buy[0]} @ {best_buy[1]}\n"
-                        f"Sell on {best_sell[0]} @ {best_sell[1]}"
-                    )
-                    logger.info(f"Alert: {msg}")
-                    send_telegram_alert(TOKEN, CHAT_ID, msg)
-                    recent_alerts.add(alert_key)
-
-                    # Optional cleanup: clear after reaching size limit
-                    if len(recent_alerts) > 1000:
-                        recent_alerts.clear()
-
-
-            latest_data = sorted(rows, key=lambda x: x["spread"], reverse=True)[:10]
-            logger.info(f"Updated arbitrage list with {len(latest_data)} entries")
+            enabled = [ex for ex, on in ENABLED.items() if on]
+            result = await compute_spreads(enabled)
+            top5 = result[:5]
+            for token in top5:
+                send_spread_alert(token)
         except Exception as e:
-            logger.exception(f"Main fetch loop error: {e}")
-        await asyncio.sleep(REFRESH_INTERVAL)
+            print(f"[❌ Alert Loop Error] {e}")
+        await asyncio.sleep(60)
+
+@app.on_event("startup")
+async def startup_event():
+    await get_binance_asset_status()  # Fetch once at startup
+    asyncio.create_task(run_top5_alerts_background())  # Start background alerts
+
+# Get token list from all active exchanges
+async def fetch_token_list_from_exchange(exchange: str):
+    if not ENABLED.get(exchange):
+        return []
+
+    info = API_INFO[exchange]
+    url = info["url"]
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            res = await client.get(url)
+            res.raise_for_status()
+            data = res.json()
+
+            items = data
+            if "result_key" in info:
+                a, b = info["result_key"]
+                items = data.get(a, {}).get(b, [])
+            elif "data" in data:
+                items = data["data"]
+
+            if isinstance(items, dict):
+                items = [items]
+
+            tokens = set()
+            for item in items:
+                symbol = item.get(info.get("inst_key", "symbol"))
+                if symbol:
+                    symbol = symbol.replace("-", "/").replace("_", "/").upper()
+                    if "/" in symbol and symbol.endswith("USDT"):
+                        tokens.add(symbol)
+
+            return list(tokens)
+
+    except Exception as e:
+        print(f"[❌ {exchange} token list error] {e}")
+        return []
+
+async def get_all_tokens():
+    cached = token_cache.get("tokens")
+    if cached:
+        return cached
+
+    tasks = [fetch_token_list_from_exchange(ex) for ex in EXCHANGES if ENABLED[ex]]
+    results = await asyncio.gather(*tasks)
+    token_set = set()
+    for tokens in results:
+        token_set.update(tokens)
+
+    sorted_tokens = sorted(token_set)
+    token_cache.set("tokens", sorted_tokens)
+    return sorted_tokens
+
+# Compute spread per token from enabled exchanges
+async def compute_spreads(enabled_exchanges):
+    all_tokens = await get_all_tokens()
+    out = []
+
+    for token in all_tokens:
+        print(f"🔍 Checking token: {token}")
+        data = await asyncio.gather(*[fetch_from(ex, token) for ex in enabled_exchanges])
+        valid = [d for d in data if d]
+
+        print(f"✅ Valid results for {token}: {valid}")
+
+        if len(valid) >= 2:
+            buy = min(valid, key=lambda x: x["buy"])
+            sell = max(valid, key=lambda x: x["sell"])
+            spread = round((sell["sell"] - buy["buy"]) / buy["buy"] * 100, 2)
+            star = buy.get("star", False) or sell.get("star", False)
+
+            access = "✅"
+            if buy["access"] == "❌" or sell["access"] == "❌":
+                access = "❌"
+
+            out.append({
+                "token": token,
+                "spread": spread,
+                "buy_ex": buy["exchange"],
+                "sell_ex": sell["exchange"],
+                "buy": buy["buy"],
+                "sell": sell["sell"],
+                "network": buy.get("network", "Auto"),
+                "withdrawal": access,
+                "fees": "0.1%",
+                "star": star
+            })
+
+    return sorted(out, key=lambda x: (-x["star"], -x["spread"]))
+
+# Routes
+@app.get("/", response_class=HTMLResponse)
+async def index(request: Request):
+    tokens = await get_all_tokens()
+    return templates.TemplateResponse("index.html", {
+        "request": request,
+        "exchanges": EXCHANGES,
+        "enabled": ENABLED,
+        "tokens": tokens
+    })
+
+@app.post("/api/top5", response_class=JSONResponse)
+async def top5(request: Request):
+    enabled = [ex for ex, on in ENABLED.items() if on]
+    result = await compute_spreads(enabled)
+    top5 = result[:5]
+    for token in top5:
+        send_spread_alert(token)
+    return top5
+
+@app.post("/api/allprices", response_class=JSONResponse)
+async def all_prices(request: Request):
+    body = await request.json()
+    enabled = [ex for ex, on in body.items() if on]
+    return await compute_spreads(enabled)
