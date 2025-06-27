@@ -35,17 +35,16 @@ async def root(request: Request):
 
 @app.post("/api/top5")
 async def top5_api():
-    enabled = load_common_tokens()[:20]  # list of tokens to monitor
-    prices = await fetch_live_prices(enabled)  # fetch live prices
-    top_tokens = fetch_top_spreads(prices)     # get top 5 spreads
-    return {"data": top_tokens[:5]}
+    enabled = load_common_tokens()[:20]
+    prices = await fetch_live_prices(enabled)
+    top_tokens = fetch_top_spreads(prices)
 
-    # send alerts for each good opportunity
+    # ✅ Send alerts BEFORE returning
     for token_obj in top_tokens:
         if token_obj["spread"] >= 1.5:
             await send_spread_alert(token_obj)
 
-    return JSONResponse(top_tokens)
+    return {"data": top_tokens[:5]}
 
 @app.post("/api/allprices")
 async def all_prices_api(req: Request):
