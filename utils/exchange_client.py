@@ -12,7 +12,7 @@ HEADERS = {
 
 async def get_binance(symbol):
     try:
-        s = symbol.replace("/", "")
+        s = symbol.replace("/", "")  # BTC/USDT -> BTCUSDT
         url = f"https://api.binance.com/api/v3/ticker/price?symbol={s}"
         async with httpx.AsyncClient(verify=False, headers=HEADERS, timeout=5) as client:
             r = await client.get(url)
@@ -38,7 +38,7 @@ async def get_bybit(symbol):
 
 async def get_mexc(symbol):
     try:
-        s = symbol.lower().replace("/", "_")
+        s = symbol.replace("/", "_").upper()  # BTC/USDT -> BTC_USDT
         url = f"https://api.mexc.com/api/v3/ticker/price?symbol={s}"
         async with httpx.AsyncClient(verify=False, headers=HEADERS, timeout=5) as client:
             r = await client.get(url)
@@ -52,7 +52,7 @@ async def get_mexc(symbol):
 
 async def get_htx(symbol):
     try:
-        s = symbol.lower().replace("/", "")
+        s = symbol.replace("/", "").lower()  # BTC/USDT -> btcusdt
         url = f"https://api.huobi.pro/market/detail/merged?symbol={s}"
         async with httpx.AsyncClient(verify=False, headers=HEADERS, timeout=5) as client:
             r = await client.get(url)
@@ -66,7 +66,7 @@ async def get_htx(symbol):
 
 async def get_okx(symbol):
     try:
-        s = symbol.replace("/", "-")
+        s = symbol.replace("/", "-").upper()  # BTC/USDT -> BTC-USDT
         url = f"https://www.okx.com/api/v5/market/ticker?instId={s}"
         okx_headers = {
             **HEADERS,
@@ -84,7 +84,7 @@ async def get_okx(symbol):
 
 async def get_bitget(symbol):
     try:
-        s = symbol.lower().replace("/", "")
+        s = symbol.replace("/", "").upper()  # BTC/USDT -> BTCUSDT
         url = f"https://api.bitget.com/api/spot/v1/market/ticker?symbol={s}"
         async with httpx.AsyncClient(verify=False, headers=HEADERS, timeout=5) as client:
             r = await client.get(url)
@@ -114,7 +114,7 @@ async def fetch_live_prices(tokens):
         for ex in EXCHANGES:
             func = EXCHANGE_FUNCS[ex]
             price = await func(token)
-            if price:
+            if price is not None:
                 results[token][ex] = price
     return results
 
