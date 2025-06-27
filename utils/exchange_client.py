@@ -94,6 +94,9 @@ async def fetch_from(exchange: str, pair: str):
     # 🛡️ Add a default user-agent header for OKX or others if flagged
     if info.get("user_agent"):
         headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        headers["Accept"] = "application/json"
+        headers["Referer"] = "https://www.okx.com"
+        headers["Origin"] = "https://www.okx.com"
 
     sym = pair.replace("/", "") if exchange != "OKX" else pair.replace("/", "-")
 
