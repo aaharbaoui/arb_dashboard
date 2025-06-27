@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-from utils.cache import load_common_tokens
+from utils.cache import load_common_tokens, load_cached_tokens
 from utils.exchange_client import fetch_live_prices, fetch_top_spreads
 from notifier import send_spread_alert
 from dotenv import load_dotenv
