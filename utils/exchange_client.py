@@ -27,7 +27,7 @@ async def get_bybit(symbol):
         async with httpx.AsyncClient(verify=False, headers=HEADERS, timeout=5) as client:
             r = await client.get(url)
         data = r.json().get("result", {}).get("list")
-        if not data or not isinstance(data, list):
+        if not data or not isinstance(data, list) or "lastPrice" not in data[0]:
             raise ValueError("Missing or invalid 'list'")
         return float(data[0]["lastPrice"])
     except Exception as e:
@@ -36,7 +36,7 @@ async def get_bybit(symbol):
 
 async def get_mexc(symbol):
     try:
-        s = symbol.lower().replace("/", "_")
+        s = symbol.upper().replace("/", "")
         url = f"https://api.mexc.com/api/v3/ticker/price?symbol={s}"
         async with httpx.AsyncClient(verify=False, headers=HEADERS, timeout=5) as client:
             r = await client.get(url)
@@ -66,9 +66,16 @@ async def get_okx(symbol):
     try:
         s = symbol.replace("/", "-").upper()
         url = f"https://www.okx.com/api/v5/market/ticker?instId={s}"
-        okx_headers = {**HEADERS, "Referer": "https://www.okx.com/"}
+        okx_headers = {
+            **HEADERS,
+            "Referer": "https://www.okx.com/",
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json"
+        }
         async with httpx.AsyncClient(verify=False, headers=okx_headers, timeout=5) as client:
             r = await client.get(url)
+            if r.status_code != 200:
+                raise ValueError(f"Status code {r.status_code}")
         data = r.json().get("data")
         if not data or not isinstance(data, list) or "last" not in data[0]:
             raise ValueError("Missing 'data[0].last'")
@@ -79,7 +86,7 @@ async def get_okx(symbol):
 
 async def get_bitget(symbol):
     try:
-        s = symbol.lower().replace("/", "")
+        s = symbol.upper().replace("/", "")
         url = f"https://api.bitget.com/api/spot/v1/market/ticker?symbol={s}"
         async with httpx.AsyncClient(verify=False, headers=HEADERS, timeout=5) as client:
             r = await client.get(url)
