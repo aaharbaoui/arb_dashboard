@@ -5,43 +5,45 @@ from fastapi.templating import Jinja2Templates
 from utils.exchange_client import fetch_from, ENABLED, API_INFO
 from utils.cache import TimedCache
 from notifier import send_spread_alert
-import asyncio
-import httpx
-import requests
-import os
-import time
-import hmac
-import hashlib
+import asyncio, httpx, os, hmac, hashlib, base64, time
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 EXCHANGES = list(ENABLED.keys())
-token_cache = TimedCache(ttl_seconds=600)  # Cache token list for 10 minutes
+token_cache = TimedCache(ttl_seconds=600)
 
-# ✅ Binance Signed Asset Status Call
+# 🛠 BINANCE asset status using API key
 async def get_binance_asset_status():
+    api_key = os.getenv("BINANCE_API_KEY")
+    api_secret = os.getenv("BINANCE_API_SECRET")
+    if not api_key or not api_secret:
+        print("[⚠️ BINANCE KEYS MISSING]")
+        return
+
     try:
-        BINANCE_API_KEY = os.getenv("BINANCE_API_KEY")
-        BINANCE_SECRET_KEY = os.getenv("BINANCE_SECRET_KEY")
-        base_url = "https://api.binance.com"
-        endpoint = "/sapi/v1/capital/config/getall"
         timestamp = int(time.time() * 1000)
-        query_string = f"timestamp={timestamp}"
-        signature = hmac.new(
-            BINANCE_SECRET_KEY.encode(), query_string.encode(), hashlib.sha256
-        ).hexdigest()
-        url = f"{base_url}{endpoint}?{query_string}&signature={signature}"
-        headers = {"X-MBX-APIKEY": BINANCE_API_KEY}
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        return response.json()
+        query = f'timestamp={timestamp}'
+        signature = hmac.new(api_secret.encode(), query.encode(), hashlib.sha256).hexdigest()
+
+        headers = {"X-MBX-APIKEY": api_key}
+        url = f'https://api.binance.com/sapi/v1/capital/config/getall?{query}&signature={signature}'
+
+        async with httpx.AsyncClient() as client:
+            r = await client.get(url, headers=headers)
+            r.raise_for_status()
+            return r.json()
     except Exception as e:
         print(f"[❌ BINANCE ASSET STATUS ERROR] {e}")
-        return []
 
-# 🔁 Background task: runs every 60 seconds
+# 🚨 Telegram test alert route
+@app.get("/test-alert")
+async def test_alert():
+    send_spread_alert({"token": "TEST", "spread": 1.23, "buy_ex": "MEXC", "sell_ex": "HTX", "buy": 0.95, "sell": 1.07})
+    return {"status": "✅ Test alert sent"}
+
+# Background spread check every 60s
 async def run_top5_alerts_background():
     while True:
         try:
@@ -56,19 +58,21 @@ async def run_top5_alerts_background():
 
 @app.on_event("startup")
 async def startup_event():
-    await get_binance_asset_status()  # Signed call now
+    await get_binance_asset_status()
     asyncio.create_task(run_top5_alerts_background())
 
-# Get token list from all active exchanges
+# Token list with OKX fix
 async def fetch_token_list_from_exchange(exchange: str):
-    if not ENABLED.get(exchange):
-        return []
+    if not ENABLED.get(exchange): return []
 
     info = API_INFO[exchange]
     url = info["url"]
-    headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"} if exchange.lower() == "okx" else {}
 
     try:
+        headers = {}
+        if exchange == "okx":
+            headers["User-Agent"] = "Mozilla/5.0"
+
         async with httpx.AsyncClient(timeout=5.0) as client:
             res = await client.get(url, headers=headers)
             res.raise_for_status()
@@ -98,10 +102,10 @@ async def fetch_token_list_from_exchange(exchange: str):
         print(f"[❌ {exchange.upper()} token list error] {e}")
         return []
 
+# Token cache
 async def get_all_tokens():
     cached = token_cache.get("tokens")
-    if cached:
-        return cached
+    if cached: return cached
 
     tasks = [fetch_token_list_from_exchange(ex) for ex in EXCHANGES if ENABLED[ex]]
     results = await asyncio.gather(*tasks)
@@ -113,7 +117,7 @@ async def get_all_tokens():
     token_cache.set("tokens", sorted_tokens)
     return sorted_tokens
 
-# Compute spread per token from enabled exchanges
+# Spread calculation
 async def compute_spreads(enabled_exchanges):
     all_tokens = await get_all_tokens()
     out = []
@@ -129,10 +133,7 @@ async def compute_spreads(enabled_exchanges):
             sell = max(valid, key=lambda x: x["sell"])
             spread = round((sell["sell"] - buy["buy"]) / buy["buy"] * 100, 2)
             star = buy.get("star", False) or sell.get("star", False)
-
-            access = "✅"
-            if buy["access"] == "❌" or sell["access"] == "❌":
-                access = "❌"
+            access = "✅" if buy["access"] != "❌" and sell["access"] != "❌" else "❌"
 
             out.append({
                 "token": token,
@@ -174,23 +175,3 @@ async def all_prices(request: Request):
     body = await request.json()
     enabled = [ex for ex, on in body.items() if on]
     return await compute_spreads(enabled)
-
-# ✅ Telegram Test Route
-@app.get("/test-alert")
-def test_alert():
-    import os, requests
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
-    chat_id = os.getenv("TELEGRAM_CHAT_ID")
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": "🚨 Test alert from Render backend"
-    }
-
-    try:
-        r = requests.post(url, json=payload)
-        print("📩 Telegram API Response:", r.status_code, r.text)  # LOG response
-        return {"status": "✅ Test alert sent"}
-    except Exception as e:
-        print("❌ Telegram Send Error:", e)
-        return {"status": f"❌ Error: {e}"}
