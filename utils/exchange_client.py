@@ -100,11 +100,13 @@ EXCHANGE_FUNCS = {
     "Bitget": get_bitget,
 }
 
-async def fetch_live_prices(tokens):
+async def fetch_live_prices(tokens, enabled_exchanges=None):
     results = {}
     for token in tokens:
         results[token] = {}
         for ex_name, fetch_func in EXCHANGE_FUNCS.items():
+            if enabled_exchanges and ex_name not in enabled_exchanges:
+                continue  # ❌ Skip if exchange is not enabled
             price = await fetch_func(token)
             if price:
                 results[token][ex_name] = price

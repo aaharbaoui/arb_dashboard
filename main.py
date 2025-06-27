@@ -50,9 +50,11 @@ async def top5_api():
 @app.post("/api/allprices")
 async def all_prices_api(req: Request):
     body = await req.json()
-    enabled = [ex for ex, state in body.items() if state]
-    all_data = await fetch_live_prices(enabled)
-    return JSONResponse(all_data)
+    enabled_exchanges = [ex for ex, state in body.items() if state]
+    
+    tokens = load_common_tokens()[:20]  # ✅ Ensure tokens like "BTC/USDT"
+    prices = await fetch_live_prices(tokens, enabled_exchanges)  # ✅ Proper args
+    return JSONResponse(prices)
 
 @app.get("/test-alert")
 async def test_alert():
