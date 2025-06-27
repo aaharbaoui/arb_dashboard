@@ -1,5 +1,5 @@
 import httpx
-import os
+import asyncio
 
 headers_okx = {
     "User-Agent": "Mozilla/5.0",
@@ -87,3 +87,17 @@ async def fetch_htx(symbol):
         }
     except Exception as e:
         return {"exchange": "HTX", "symbol": symbol, "error": str(e)}
+
+# ✅ Merge logic used by main.py
+
+EXCHANGE_FUNCTIONS = [fetch_okx, fetch_bitget, fetch_bybit, fetch_mexc, fetch_htx]
+
+async def fetch_live_prices(symbol: str):
+    tasks = [func(symbol) for func in EXCHANGE_FUNCTIONS]
+    results = await asyncio.gather(*tasks)
+    return results
+
+async def fetch_top_spreads(symbols: list):
+    tasks = [fetch_live_prices(symbol) for symbol in symbols]
+    all_prices = await asyncio.gather(*tasks)
+    return [item for sublist in all_prices for item in sublist]
