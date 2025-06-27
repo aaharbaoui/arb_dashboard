@@ -2,11 +2,16 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from utils.exchange_client import fetch_from, ENABLED, API_INFO, get_binance_asset_status
+from utils.exchange_client import fetch_from, ENABLED, API_INFO
 from utils.cache import TimedCache
+from notifier import send_spread_alert
 import asyncio
 import httpx
-from notifier import send_spread_alert
+import requests
+import os
+import time
+import hmac
+import hashlib
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -14,6 +19,27 @@ templates = Jinja2Templates(directory="templates")
 
 EXCHANGES = list(ENABLED.keys())
 token_cache = TimedCache(ttl_seconds=600)  # Cache token list for 10 minutes
+
+# ✅ Binance Signed Asset Status Call
+async def get_binance_asset_status():
+    try:
+        BINANCE_API_KEY = os.getenv("BINANCE_API_KEY")
+        BINANCE_SECRET_KEY = os.getenv("BINANCE_SECRET_KEY")
+        base_url = "https://api.binance.com"
+        endpoint = "/sapi/v1/capital/config/getall"
+        timestamp = int(time.time() * 1000)
+        query_string = f"timestamp={timestamp}"
+        signature = hmac.new(
+            BINANCE_SECRET_KEY.encode(), query_string.encode(), hashlib.sha256
+        ).hexdigest()
+        url = f"{base_url}{endpoint}?{query_string}&signature={signature}"
+        headers = {"X-MBX-APIKEY": BINANCE_API_KEY}
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        print(f"[❌ BINANCE ASSET STATUS ERROR] {e}")
+        return []
 
 # 🔁 Background task: runs every 60 seconds
 async def run_top5_alerts_background():
@@ -30,8 +56,8 @@ async def run_top5_alerts_background():
 
 @app.on_event("startup")
 async def startup_event():
-    await get_binance_asset_status()  # Fetch once at startup
-    asyncio.create_task(run_top5_alerts_background())  # Start background alerts
+    await get_binance_asset_status()  # Signed call now
+    asyncio.create_task(run_top5_alerts_background())
 
 # Get token list from all active exchanges
 async def fetch_token_list_from_exchange(exchange: str):
@@ -40,10 +66,11 @@ async def fetch_token_list_from_exchange(exchange: str):
 
     info = API_INFO[exchange]
     url = info["url"]
+    headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"} if exchange.lower() == "okx" else {}
 
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            res = await client.get(url)
+            res = await client.get(url, headers=headers)
             res.raise_for_status()
             data = res.json()
 
@@ -68,7 +95,7 @@ async def fetch_token_list_from_exchange(exchange: str):
             return list(tokens)
 
     except Exception as e:
-        print(f"[❌ {exchange} token list error] {e}")
+        print(f"[❌ {exchange.upper()} token list error] {e}")
         return []
 
 async def get_all_tokens():
@@ -95,7 +122,6 @@ async def compute_spreads(enabled_exchanges):
         print(f"🔍 Checking token: {token}")
         data = await asyncio.gather(*[fetch_from(ex, token) for ex in enabled_exchanges])
         valid = [d for d in data if d]
-
         print(f"✅ Valid results for {token}: {valid}")
 
         if len(valid) >= 2:
@@ -148,3 +174,12 @@ async def all_prices(request: Request):
     body = await request.json()
     enabled = [ex for ex, on in body.items() if on]
     return await compute_spreads(enabled)
+
+# ✅ Telegram Test Route
+@app.get("/test-alert")
+def test_alert():
+    try:
+        send_spread_alert({"token": "TEST", "spread": 1.23, "buy_ex": "MEXC", "sell_ex": "HTX"})
+        return {"status": "✅ Test alert sent"}
+    except Exception as e:
+        return {"status": f"❌ Failed to send alert: {e}"}
