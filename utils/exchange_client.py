@@ -48,7 +48,8 @@ API_INFO = {
         "hdr": "OK-ACCESS-KEY",
         "ask": "askPx",
         "bid": "bidPx",
-        "inst_key": "instId"
+        "inst_key": "instId",
+        "user_agent": True  # 🛡️ Add flag to enforce user-agent header
     },
 }
 
@@ -86,7 +87,14 @@ async def fetch_from(exchange: str, pair: str):
         return None
 
     info = API_INFO.get(exchange)
-    headers = {info["hdr"]: os.getenv(f"{exchange.upper()}_API_KEY")}
+    headers = {
+        info["hdr"]: os.getenv(f"{exchange.upper()}_API_KEY", "")
+    }
+
+    # 🛡️ Add a default user-agent header for OKX or others if flagged
+    if info.get("user_agent"):
+        headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+
     sym = pair.replace("/", "") if exchange != "OKX" else pair.replace("/", "-")
 
     try:
