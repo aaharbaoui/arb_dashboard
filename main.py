@@ -35,11 +35,12 @@ async def root(request: Request):
 
 @app.post("/api/top5")
 async def top5_api():
-    enabled = load_common_tokens()[:20]
-    prices = await fetch_live_prices(enabled)
-    top_tokens = fetch_top_spreads(prices)
+    tokens = load_common_tokens()[:20]  # Token list, e.g., ["BTC/USDT", "ETH/USDT"]
+    print("🔍 Loaded tokens for top5:", tokens)
+    prices = await fetch_live_prices(tokens)  # Get live prices per exchange
+    top_tokens = fetch_top_spreads(prices)   # Detect spread opportunities
 
-    # ✅ Send alerts BEFORE returning
+    # ✅ Send alerts for spreads >= 1.5%
     for token_obj in top_tokens:
         if token_obj["spread"] >= 1.5:
             await send_spread_alert(token_obj)
