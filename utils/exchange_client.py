@@ -1,8 +1,6 @@
 import httpx
 import asyncio
 
-EXCHANGES = ["Binance", "Bybit", "MEXC", "HTX", "OKX", "Bitget"]
-
 HEADERS = {
     "User-Agent": "Mozilla/5.0",
     "Accept": "application/json",
@@ -12,7 +10,7 @@ HEADERS = {
 
 async def get_binance(symbol):
     try:
-        s = symbol.replace("/", "")  # BTC/USDT -> BTCUSDT
+        s = symbol.replace("/", "")
         url = f"https://api.binance.com/api/v3/ticker/price?symbol={s}"
         async with httpx.AsyncClient(verify=False, headers=HEADERS, timeout=5) as client:
             r = await client.get(url)
@@ -38,7 +36,7 @@ async def get_bybit(symbol):
 
 async def get_mexc(symbol):
     try:
-        s = symbol.replace("/", "_").upper()  # BTC/USDT -> BTC_USDT
+        s = symbol.lower().replace("/", "_")
         url = f"https://api.mexc.com/api/v3/ticker/price?symbol={s}"
         async with httpx.AsyncClient(verify=False, headers=HEADERS, timeout=5) as client:
             r = await client.get(url)
@@ -52,7 +50,7 @@ async def get_mexc(symbol):
 
 async def get_htx(symbol):
     try:
-        s = symbol.replace("/", "").lower()  # BTC/USDT -> btcusdt
+        s = symbol.lower().replace("/", "")
         url = f"https://api.huobi.pro/market/detail/merged?symbol={s}"
         async with httpx.AsyncClient(verify=False, headers=HEADERS, timeout=5) as client:
             r = await client.get(url)
@@ -66,12 +64,9 @@ async def get_htx(symbol):
 
 async def get_okx(symbol):
     try:
-        s = symbol.replace("/", "-").upper()  # BTC/USDT -> BTC-USDT
+        s = symbol.replace("/", "-").upper()
         url = f"https://www.okx.com/api/v5/market/ticker?instId={s}"
-        okx_headers = {
-            **HEADERS,
-            "Referer": "https://www.okx.com/",
-        }
+        okx_headers = {**HEADERS, "Referer": "https://www.okx.com/"}
         async with httpx.AsyncClient(verify=False, headers=okx_headers, timeout=5) as client:
             r = await client.get(url)
         data = r.json().get("data")
@@ -84,7 +79,7 @@ async def get_okx(symbol):
 
 async def get_bitget(symbol):
     try:
-        s = symbol.replace("/", "").upper()  # BTC/USDT -> BTCUSDT
+        s = symbol.lower().replace("/", "")
         url = f"https://api.bitget.com/api/spot/v1/market/ticker?symbol={s}"
         async with httpx.AsyncClient(verify=False, headers=HEADERS, timeout=5) as client:
             r = await client.get(url)
@@ -95,8 +90,6 @@ async def get_bitget(symbol):
     except Exception as e:
         print(f"[⚠️ Bitget error] {symbol}: {e}")
         return None
-
-# --- Main fetch function ---
 
 EXCHANGE_FUNCS = {
     "Binance": get_binance,
@@ -111,11 +104,10 @@ async def fetch_live_prices(tokens):
     results = {}
     for token in tokens:
         results[token] = {}
-        for ex in EXCHANGES:
-            func = EXCHANGE_FUNCS[ex]
-            price = await func(token)
-            if price is not None:
-                results[token][ex] = price
+        for ex_name, fetch_func in EXCHANGE_FUNCS.items():
+            price = await fetch_func(token)
+            if price:
+                results[token][ex_name] = price
     return results
 
 def fetch_top_spreads(prices):
