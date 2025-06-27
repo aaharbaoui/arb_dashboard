@@ -178,8 +178,19 @@ async def all_prices(request: Request):
 # ✅ Telegram Test Route
 @app.get("/test-alert")
 def test_alert():
+    import os, requests
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": "🚨 Test alert from Render backend"
+    }
+
     try:
-        send_spread_alert({"token": "TEST", "spread": 1.23, "buy_ex": "MEXC", "sell_ex": "HTX"})
+        r = requests.post(url, json=payload)
+        print("📩 Telegram API Response:", r.status_code, r.text)  # LOG response
         return {"status": "✅ Test alert sent"}
     except Exception as e:
-        return {"status": f"❌ Failed to send alert: {e}"}
+        print("❌ Telegram Send Error:", e)
+        return {"status": f"❌ Error: {e}"}
