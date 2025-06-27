@@ -1,23 +1,21 @@
 import os
 import requests
-import logging
 
-logger = logging.getLogger(__name__)
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-def send_telegram_alert(token: str, chat_id: str, message: str):
-    # You can disable alerts by setting this env var to false
-    if os.getenv("TELEGRAM_ENABLED", "true").lower() != "true":
-        logger.info("Telegram alert skipped: TELEGRAM_ENABLED is false")
+def send_spread_alert(data):
+    if not BOT_TOKEN or not CHAT_ID:
+        print("[⚠️ Telegram] Missing BOT_TOKEN or CHAT_ID")
         return
-
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {"chat_id": chat_id, "text": message}
-
     try:
-        response = requests.post(url, data=payload, timeout=5)
+        message = f"🔥 Arbitrage Alert 🔥\n\n{data}"
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        response = requests.post(url, json={
+            "chat_id": CHAT_ID,
+            "text": message
+        })
         if response.status_code != 200:
-            logger.error(f"Telegram send failed: {response.status_code} - {response.text}")
-        else:
-            logger.info("Telegram alert sent successfully.")
+            print(f"[❌ Telegram Error] Status: {response.status_code}, Body: {response.text}")
     except Exception as e:
-        logger.exception(f"Telegram send error: {e}")
+        print(f"[❌ Telegram Exception] {e}")

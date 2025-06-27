@@ -1,156 +1,135 @@
-import os
 import httpx
-from dotenv import load_dotenv
+import asyncio
 
-load_dotenv()
+EXCHANGES = ["Binance", "Bybit", "MEXC", "HTX", "OKX", "Bitget"]
 
-EXCHANGES = ["Binance", "MEXC", "Bybit", "Bitget", "HTX", "OKX"]
-
-ENABLED = {
-    ex: os.getenv(f"{ex.upper()}_ENABLED", "False").strip().lower() == "true"
-    for ex in EXCHANGES
+HEADERS = {
+    "User-Agent": "Mozilla/5.0"
 }
 
-API_INFO = {
-    "Binance": {
-        "url": "https://api.binance.com/api/v3/ticker/bookTicker",
-        "hdr": "X-MBX-APIKEY",
-        "ask": "askPrice",
-        "bid": "bidPrice"
-    },
-    "MEXC": {
-        "url": "https://api.mexc.com/api/v3/ticker/bookTicker",
-        "hdr": "X-MEXC-APIKEY",
-        "ask": "askPrice",
-        "bid": "bidPrice"
-    },
-    "Bybit": {
-        "url": "https://api.bybit.com/v5/market/tickers?category=spot",
-        "hdr": "X-BYBIT-API-KEY",
-        "ask": "askPrice",
-        "bid": "bidPrice",
-        "result_key": ("result", "list")
-    },
-    "Bitget": {
-        "url": "https://api.bitget.com/api/spot/v1/market/tickers",
-        "hdr": "ACCESS-KEY",
-        "ask": "askPr",
-        "bid": "bidPr"
-    },
-    "HTX": {
-        "url": "https://api.huobi.pro/market/tickers",
-        "hdr": "AccessKeyId",
-        "ask": "ask",
-        "bid": "bid"
-    },
-    "OKX": {
-        "url": "https://www.okx.com/api/v5/market/tickers?instType=SPOT",
-        "hdr": "OK-ACCESS-KEY",
-        "ask": "askPx",
-        "bid": "bidPx",
-        "inst_key": "instId",
-        "user_agent": True  # 🛡️ Add flag to enforce user-agent header
-    },
+# --- Exchange price functions ---
+
+async def get_binance(symbol):
+    try:
+        s = symbol.replace("/", "")
+        url = f"https://api.binance.com/api/v3/ticker/price?symbol={s}"
+        async with httpx.AsyncClient(verify=False, headers=HEADERS, timeout=5) as client:
+            r = await client.get(url)
+        r.raise_for_status()
+        return float(r.json()["price"])
+    except Exception as e:
+        print(f"[⚠️ Binance error] {symbol}: {e}")
+        return None
+
+async def get_bybit(symbol):
+    try:
+        s = symbol.replace("/", "")
+        url = f"https://api.bybit.com/v5/market/tickers?category=spot&symbol={s}"
+        async with httpx.AsyncClient(verify=False, headers=HEADERS, timeout=5) as client:
+            r = await client.get(url)
+        data = r.json().get("result", {}).get("list")
+        if not data or not isinstance(data, list):
+            raise ValueError("Missing or invalid 'list'")
+        return float(data[0]["lastPrice"])
+    except Exception as e:
+        print(f"[⚠️ Bybit error] {symbol}: {e}")
+        return None
+
+async def get_mexc(symbol):
+    try:
+        s = symbol.replace("/", "_")
+        url = f"https://api.mexc.com/api/v3/ticker/price?symbol={s}"
+        async with httpx.AsyncClient(verify=False, headers=HEADERS, timeout=5) as client:
+            r = await client.get(url)
+        data = r.json()
+        if "price" not in data:
+            raise ValueError("Missing 'price'")
+        return float(data["price"])
+    except Exception as e:
+        print(f"[⚠️ MEXC error] {symbol}: {e}")
+        return None
+
+async def get_htx(symbol):
+    try:
+        s = symbol.lower().replace("/", "")
+        url = f"https://api.huobi.pro/market/detail/merged?symbol={s}"
+        async with httpx.AsyncClient(verify=False, headers=HEADERS, timeout=5) as client:
+            r = await client.get(url)
+        tick = r.json().get("tick")
+        if not tick or "close" not in tick:
+            raise ValueError("Missing 'tick.close'")
+        return float(tick["close"])
+    except Exception as e:
+        print(f"[⚠️ HTX error] {symbol}: {e}")
+        return None
+
+async def get_okx(symbol):
+    try:
+        s = symbol.replace("/", "-")
+        url = f"https://www.okx.com/api/v5/market/ticker?instId={s}"
+        async with httpx.AsyncClient(verify=False, headers=HEADERS, timeout=5) as client:
+            r = await client.get(url)
+        data = r.json().get("data")
+        if not data or not isinstance(data, list) or "last" not in data[0]:
+            raise ValueError("Missing 'data[0].last'")
+        return float(data[0]["last"])
+    except Exception as e:
+        print(f"[⚠️ OKX error] {symbol}: {e}")
+        return None
+
+async def get_bitget(symbol):
+    try:
+        s = symbol.replace("/", "")
+        url = f"https://api.bitget.com/api/spot/v1/market/ticker?symbol={s}"
+        async with httpx.AsyncClient(verify=False, headers=HEADERS, timeout=5) as client:
+            r = await client.get(url)
+        data = r.json().get("data")
+        if not data or "close" not in data:
+            raise ValueError("Missing 'data.close'")
+        return float(data["close"])
+    except Exception as e:
+        print(f"[⚠️ Bitget error] {symbol}: {e}")
+        return None
+
+# --- Main fetch function ---
+
+EXCHANGE_FUNCS = {
+    "Binance": get_binance,
+    "Bybit": get_bybit,
+    "MEXC": get_mexc,
+    "HTX": get_htx,
+    "OKX": get_okx,
+    "Bitget": get_bitget,
 }
 
-BINANCE_ASSET_STATUS = {}
+async def fetch_live_prices(tokens):
+    results = {}
+    for token in tokens:
+        results[token] = {}
+        for ex in EXCHANGES:
+            func = EXCHANGE_FUNCS[ex]
+            price = await func(token)
+            if price:
+                results[token][ex] = price
+    return results
 
-async def get_binance_asset_status():
-    global BINANCE_ASSET_STATUS
-    url = "https://api.binance.com/sapi/v1/capital/config/getall"
-    headers = {"X-MBX-APIKEY": os.getenv("BINANCE_API_KEY")}
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            res = await client.get(url, headers=headers)
-            res.raise_for_status()
-            data = res.json()
-            for item in data:
-                asset = item.get("coin")
-                BINANCE_ASSET_STATUS[asset] = {
-                    "deposit": item.get("depositAllEnable", True),
-                    "withdraw": item.get("withdrawAllEnable", True)
-                }
-    except Exception as e:
-        print(f"[❌ BINANCE ASSET STATUS ERROR] {e}")
-
-def is_star_token(token_info):
-    liquidity_ok = token_info.get("volume", 0) > 1_000_000
-    withdrawal_ok = token_info.get("withdrawal_enabled", True)
-    deposit_ok = token_info.get("deposit_enabled", True)
-    low_fee = token_info.get("withdrawal_fee", 0) < 1
-    good_network = token_info.get("network", "").upper() in ["TRC20", "XRP", "XLM", "BEP20", "MATIC"]
-    return liquidity_ok and withdrawal_ok and deposit_ok and low_fee and good_network
-
-async def fetch_from(exchange: str, pair: str):
-    if not ENABLED.get(exchange, False):
-        print(f"[⚠️ {exchange}] Skipped - Disabled in .env")
-        return None
-
-    info = API_INFO.get(exchange)
-    headers = {
-        info["hdr"]: os.getenv(f"{exchange.upper()}_API_KEY", "")
-    }
-
-    # 🛡️ Add a default user-agent header for OKX or others if flagged
-    if info.get("user_agent"):
-        headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-        headers["Accept"] = "application/json"
-        headers["Referer"] = "https://www.okx.com"
-        headers["Origin"] = "https://www.okx.com"
-
-    sym = pair.replace("/", "") if exchange != "OKX" else pair.replace("/", "-")
-
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            res = await client.get(info["url"], headers=headers)
-            res.raise_for_status()
-            d = res.json()
-
-            items = d
-            if "result_key" in info:
-                a, b = info["result_key"]
-                items = d.get(a, {}).get(b, [])
-            elif "data" in d:
-                items = d["data"]
-
-            if isinstance(items, dict):
-                items = [items]
-
-            for it in items:
-                key = it.get(info.get("inst_key", "symbol"))
-                if not key:
-                    continue
-                if key.replace("-", "").lower() == sym.lower():
-                    ask = it.get(info["ask"])
-                    bid = it.get(info["bid"])
-                    if ask is not None and bid is not None:
-                        asset = pair.split("/")[0].upper()
-                        token_info = {
-                            "volume": float(it.get("quoteVolume") or it.get("vol") or 0),
-                            "withdrawal_enabled": True,
-                            "deposit_enabled": True,
-                            "withdrawal_fee": float(it.get("withdrawFee") or 0),
-                            "network": it.get("network", "")
-                        }
-
-                        if exchange == "Binance" and BINANCE_ASSET_STATUS.get(asset):
-                            token_info["withdrawal_enabled"] = BINANCE_ASSET_STATUS[asset]["withdraw"]
-                            token_info["deposit_enabled"] = BINANCE_ASSET_STATUS[asset]["deposit"]
-
-                        result = {
-                            "exchange": exchange,
-                            "buy": float(ask),
-                            "sell": float(bid),
-                            "star": is_star_token(token_info),
-                            "access": "✅" if token_info["deposit_enabled"] and token_info["withdrawal_enabled"] else "❌"
-                        }
-                        if os.getenv("DEBUG", "false").lower() == "true":
-                            print(f"[✅ {exchange}] {pair}: {result}")
-                        return result
-
-        print(f"[❌ {exchange}] {pair}: Not found or missing ask/bid")
-        return None
-
-    except Exception as e:
-        print(f"[❌ {exchange}] {pair}: {e}")
-        return None
+def fetch_top_spreads(prices):
+    top = []
+    for token, data in prices.items():
+        if len(data) < 2:
+            continue
+        min_ex = min(data, key=data.get)
+        max_ex = max(data, key=data.get)
+        buy = data[min_ex]
+        sell = data[max_ex]
+        spread = ((sell - buy) / buy) * 100
+        if spread > 0:
+            top.append({
+                "token": token,
+                "buy_on": min_ex,
+                "sell_on": max_ex,
+                "buy_price": round(buy, 4),
+                "sell_price": round(sell, 4),
+                "spread": round(spread, 2)
+            })
+    return sorted(top, key=lambda x: x["spread"], reverse=True)
