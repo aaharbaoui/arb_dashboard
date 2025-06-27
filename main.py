@@ -35,14 +35,13 @@ async def root(request: Request):
 
 @app.post("/api/top5")
 async def top5_api():
-    tokens = load_common_tokens()[:20]  # Token list, e.g., ["BTC/USDT", "ETH/USDT"]
-    print("🔍 Loaded tokens for top5:", tokens)
-    prices = await fetch_live_prices(tokens)  # Get live prices per exchange
-    top_tokens = await fetch_top_spreads(prices)  # ✅ await this coroutine
+    symbols = load_cached_tokens()
+    raw_spreads = await fetch_top_spreads(symbols)  # ✅ This is now a coroutine
+    top_tokens = calculate_top_spreads(raw_spreads)  # ✅ Filters and sorts the top 20
 
-    # ✅ Send alerts for spreads >= 1.5%
+    # ✅ Send alerts only if spread is 1.5% or more
     for token_obj in top_tokens:
-        if token_obj["spread"] >= 1.5:
+        if "spread" in token_obj and token_obj["spread"] >= 1.5:
             await send_spread_alert(token_obj)
 
     return {"data": top_tokens[:5]}
