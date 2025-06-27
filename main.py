@@ -38,7 +38,7 @@ async def top5_api():
     tokens = load_common_tokens()[:20]  # Token list, e.g., ["BTC/USDT", "ETH/USDT"]
     print("🔍 Loaded tokens for top5:", tokens)
     prices = await fetch_live_prices(tokens)  # Get live prices per exchange
-    top_tokens = fetch_top_spreads(prices)   # Detect spread opportunities
+    top_tokens = await fetch_top_spreads(prices)  # ✅ await this coroutine
 
     # ✅ Send alerts for spreads >= 1.5%
     for token_obj in top_tokens:
