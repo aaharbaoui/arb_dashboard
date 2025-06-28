@@ -17,12 +17,12 @@ async def fetch_okx(symbol):
         data = resp.json().get("data", [{}])[0]
         return {
             "exchange": "OKX",
-            "symbol": symbol,
+            "token": symbol,
             "buy": float(data.get("bidPx", 0)),
             "sell": float(data.get("askPx", 0)),
         }
     except Exception as e:
-        return {"exchange": "OKX", "symbol": symbol, "error": str(e)}
+        return {"exchange": "OKX", "token": symbol, "error": str(e)}
 
 async def fetch_bitget(symbol):
     try:
@@ -33,12 +33,12 @@ async def fetch_bitget(symbol):
         data = resp.json().get("data", {})
         return {
             "exchange": "Bitget",
-            "symbol": symbol,
+            "token": symbol,
             "buy": float(data.get("buyOne", 0)),
             "sell": float(data.get("sellOne", 0)),
         }
     except Exception as e:
-        return {"exchange": "Bitget", "symbol": symbol, "error": str(e)}
+        return {"exchange": "Bitget", "token": symbol, "error": str(e)}
 
 async def fetch_bybit(symbol):
     try:
@@ -49,12 +49,12 @@ async def fetch_bybit(symbol):
         result = resp.json().get("result", {}).get("list", [{}])[0]
         return {
             "exchange": "Bybit",
-            "symbol": symbol,
+            "token": symbol,
             "buy": float(result.get("bid1Price", 0)),
             "sell": float(result.get("ask1Price", 0)),
         }
     except Exception as e:
-        return {"exchange": "Bybit", "symbol": symbol, "error": str(e)}
+        return {"exchange": "Bybit", "token": symbol, "error": str(e)}
 
 async def fetch_mexc(symbol):
     try:
@@ -65,12 +65,12 @@ async def fetch_mexc(symbol):
         data = resp.json()
         return {
             "exchange": "MEXC",
-            "symbol": symbol,
+            "token": symbol,
             "buy": float(data.get("bidPrice", 0)),
             "sell": float(data.get("askPrice", 0)),
         }
     except Exception as e:
-        return {"exchange": "MEXC", "symbol": symbol, "error": str(e)}
+        return {"exchange": "MEXC", "token": symbol, "error": str(e)}
 
 async def fetch_htx(symbol):
     try:
@@ -81,23 +81,33 @@ async def fetch_htx(symbol):
         tick = resp.json().get("tick", {})
         return {
             "exchange": "HTX",
-            "symbol": symbol,
+            "token": symbol,
             "buy": float(tick.get("bid", [0])[0]),
             "sell": float(tick.get("ask", [0])[0]),
         }
     except Exception as e:
-        return {"exchange": "HTX", "symbol": symbol, "error": str(e)}
+        return {"exchange": "HTX", "token": symbol, "error": str(e)}
 
-# ✅ Merge logic used by main.py
-
+# List of exchange fetchers
 EXCHANGE_FUNCTIONS = [fetch_okx, fetch_bitget, fetch_bybit, fetch_mexc, fetch_htx]
 
-async def fetch_live_prices(symbol: str):
-    tasks = [func(symbol) for func in EXCHANGE_FUNCTIONS]
-    results = await asyncio.gather(*tasks)
+async def fetch_live_prices(symbols, enabled_exchanges=None):
+    # symbols: list of tokens
+    # enabled_exchanges: list of exchange names
+    results = []
+    for symbol in symbols:
+        tasks = []
+        for func in EXCHANGE_FUNCTIONS:
+            ex_name = func.__name__.replace("fetch_", "").upper()
+            if enabled_exchanges is None or ex_name in [e.upper() for e in enabled_exchanges]:
+                tasks.append(func(symbol))
+        responses = await asyncio.gather(*tasks)
+        for r in responses:
+            results.append(r)
     return results
 
-async def fetch_top_spreads(symbols: list):
-    tasks = [fetch_live_prices(symbol) for symbol in symbols]
-    all_prices = await asyncio.gather(*tasks)
-    return [item for sublist in all_prices for item in sublist]
+async def fetch_top_spreads(symbols):
+    # For each token, get all exchange prices (buy/sell)
+    # Then compute spread logic (implement in main.py or here)
+    all_prices = await fetch_live_prices(symbols)
+    return all_prices

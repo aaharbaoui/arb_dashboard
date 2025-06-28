@@ -84,19 +84,16 @@
     }
 
     async function loadData() {
-      const resTop = await fetch("/api/top5", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(state)
-      });
-      const top5 = await resTop.json();
-
-      const resAll = await fetch("/api/allprices", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(state)
-      });
-      const all = await resAll.json();
+      // --- TOP 5 HIGH SPREAD TOKENS ---
+      let top5 = [];
+      try {
+        const resTop = await fetch("/api/top5", { method: "POST" });
+        const dataTop = await resTop.json();
+        top5 = dataTop.data || [];
+      } catch (e) {
+        top5 = [];
+        document.getElementById("top5-body").innerHTML = `<tr><td colspan="7" class="text-center text-red-500">Failed to load top spreads</td></tr>`;
+      }
 
       document.getElementById("top5-body").innerHTML = top5.length
         ? top5.map(t => `
@@ -105,19 +102,36 @@
             <td class="numeric">${t.spread}%</td>
             <td class="text">${t.buy_ex}</td>
             <td class="text">${t.sell_ex}</td>
-            <td class="text">${t.network}</td>
-            <td class="numeric">${t.withdrawal}</td>
-            <td class="numeric">${t.fees}</td>
+            <td class="text">${t.network || ''}</td>
+            <td class="numeric">${t.withdrawal || ''}</td>
+            <td class="numeric">${t.fees || ''}</td>
           </tr>
         `).join('')
         : `<tr><td colspan="7" class="text-center">No high-spread tokens found</td></tr>`;
 
+      // --- LIVE TOKEN PRICES ---
+      let all = [];
+      try {
+        const resAll = await fetch("/api/allprices", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(state)
+        });
+        all = await resAll.json();
+      } catch (e) {
+        all = [];
+        document.getElementById("prices-head").innerHTML = "";
+        document.getElementById("prices-body").innerHTML = `<tr><td colspan="7" class="text-center text-red-500">Failed to load prices</td></tr>`;
+      }
+
+      // Build table head
       let headRow = `<th>Token</th>`;
       EX.filter(e => state[e]).forEach(e => {
         headRow += `<th colspan="2">${e}</th>`;
       });
       document.getElementById("prices-head").innerHTML = `<tr>${headRow}</tr>`;
 
+      // Build table body for prices
       let rows = all.slice(0, 30).map(row => {
         let cells = `<td class="text">${row.token}</td>`;
         EX.filter(e => state[e]).forEach(() => {
@@ -129,15 +143,16 @@
       }).join('');
       document.getElementById("prices-body").innerHTML = rows;
 
-      buildCalculator(top5[0]);
+      buildCalculator(top5, all);
     }
 
-    function buildCalculator(top) {
-      const tokenList = [ ];
+    function buildCalculator(top5, allPrices) {
+      // This function assumes you have #calcBtn, #tokenInput, #amount, #calcResult in calculator.html
+      const tokenList = allPrices ? allPrices.map(row => row.token) : [];
       const calcBtn = document.getElementById("calcBtn");
       if (!calcBtn) return;
 
-      calcBtn.addEventListener("click", () => {
+      calcBtn.onclick = () => {
         const inputToken = document.getElementById("tokenInput").value.trim();
         const inputAmount = parseFloat(document.getElementById("amount").value);
         const resultBox = document.getElementById("calcResult");
@@ -147,9 +162,9 @@
           return;
         }
 
-        const spread = top && top.token === inputToken ? top.spread : null;
+        const top = top5.find(t => t.token === inputToken);
 
-        if (!spread) {
+        if (!top || !top.spread) {
           resultBox.innerText = "❌ No spread data";
           return;
         }
@@ -159,9 +174,9 @@
           return;
         }
 
-        const profit = inputAmount * spread / 100;
+        const profit = inputAmount * top.spread / 100;
         resultBox.innerText = `≈ $${profit.toFixed(2)}`;
-      });
+      };
     }
 
     document.addEventListener("DOMContentLoaded", () => {
