@@ -1,19 +1,28 @@
 import httpx
 import asyncio
 
-headers_okx = {
-    "User-Agent": "Mozilla/5.0",
-    "Accept": "application/json"
-}
+async def fetch_binance(symbol):
+    try:
+        symbol_formatted = symbol.replace("/", "")
+        url = f"https://api.binance.com/api/v3/ticker/bookTicker?symbol={symbol_formatted}"
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url)
+        data = resp.json()
+        return {
+            "exchange": "Binance",
+            "token": symbol,
+            "buy": float(data.get("bidPrice", 0)),
+            "sell": float(data.get("askPrice", 0)),
+        }
+    except Exception as e:
+        return {"exchange": "Binance", "token": symbol, "error": str(e)}
 
 async def fetch_okx(symbol):
     try:
         symbol_formatted = symbol.replace("/", "-").upper()
         url = f"https://www.okx.com/api/v5/market/ticker?instId={symbol_formatted}"
         async with httpx.AsyncClient() as client:
-            resp = await client.get(url, headers=headers_okx)
-        if resp.status_code != 200:
-            return {"exchange": "OKX", "symbol": symbol, "error": f"Status code {resp.status_code}"}
+            resp = await client.get(url)
         data = resp.json().get("data", [{}])[0]
         return {
             "exchange": "OKX",
@@ -23,22 +32,6 @@ async def fetch_okx(symbol):
         }
     except Exception as e:
         return {"exchange": "OKX", "token": symbol, "error": str(e)}
-
-async def fetch_bitget(symbol):
-    try:
-        symbol_formatted = symbol.replace("/", "").upper()
-        url = f"https://api.bitget.com/api/v2/spot/market/ticker?symbol={symbol_formatted}"
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(url)
-        data = resp.json().get("data", {})
-        return {
-            "exchange": "Bitget",
-            "token": symbol,
-            "buy": float(data.get("buyOne", 0)),
-            "sell": float(data.get("sellOne", 0)),
-        }
-    except Exception as e:
-        return {"exchange": "Bitget", "token": symbol, "error": str(e)}
 
 async def fetch_bybit(symbol):
     try:
@@ -82,24 +75,45 @@ async def fetch_htx(symbol):
         return {
             "exchange": "HTX",
             "token": symbol,
-            "buy": float(tick.get("bid", [0])[0]),
-            "sell": float(tick.get("ask", [0])[0]),
+            "buy": float(tick.get("bid", [0])[0] if "bid" in tick else 0),
+            "sell": float(tick.get("ask", [0])[0] if "ask" in tick else 0),
         }
     except Exception as e:
         return {"exchange": "HTX", "token": symbol, "error": str(e)}
 
+async def fetch_bitget(symbol):
+    try:
+        symbol_formatted = symbol.replace("/", "").upper()
+        url = f"https://api.bitget.com/api/v2/spot/market/ticker?symbol={symbol_formatted}"
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url)
+        data = resp.json().get("data", {})
+        return {
+            "exchange": "Bitget",
+            "token": symbol,
+            "buy": float(data.get("buyOne", 0)),
+            "sell": float(data.get("sellOne", 0)),
+        }
+    except Exception as e:
+        return {"exchange": "Bitget", "token": symbol, "error": str(e)}
+
 # List of exchange fetchers
-EXCHANGE_FUNCTIONS = [fetch_okx, fetch_bitget, fetch_bybit, fetch_mexc, fetch_htx]
+EXCHANGE_FUNCTIONS = [
+    fetch_binance,
+    fetch_okx,
+    fetch_bybit,
+    fetch_mexc,
+    fetch_htx,
+    fetch_bitget
+]
 
 async def fetch_live_prices(symbols, enabled_exchanges=None):
-    # symbols: list of tokens
-    # enabled_exchanges: list of exchange names
     results = []
     for symbol in symbols:
         tasks = []
         for func in EXCHANGE_FUNCTIONS:
-            ex_name = func.__name__.replace("fetch_", "").upper()
-            if enabled_exchanges is None or ex_name in [e.upper() for e in enabled_exchanges]:
+            ex_name = func.__name__.replace("fetch_", "").capitalize()
+            if enabled_exchanges is None or ex_name in enabled_exchanges:
                 tasks.append(func(symbol))
         responses = await asyncio.gather(*tasks)
         for r in responses:
@@ -108,6 +122,39 @@ async def fetch_live_prices(symbols, enabled_exchanges=None):
 
 async def fetch_top_spreads(symbols):
     # For each token, get all exchange prices (buy/sell)
-    # Then compute spread logic (implement in main.py or here)
     all_prices = await fetch_live_prices(symbols)
     return all_prices
+
+def calculate_top_spreads(all_prices):
+    """
+    all_prices: list of {exchange, token, buy, sell}
+    Returns: list of top spread opportunities, sorted by spread descending
+    """
+    from collections import defaultdict
+    token_prices = defaultdict(list)
+    for p in all_prices:
+        if "token" not in p or "buy" not in p or "sell" not in p:
+            continue
+        token = p["token"]
+        token_prices[token].append(p)
+    results = []
+    for token, prices in token_prices.items():
+        max_sell = max((p for p in prices if p.get("sell", 0)), key=lambda x: x.get("sell", 0), default=None)
+        min_buy = min((p for p in prices if p.get("buy", 0)), key=lambda x: x.get("buy", 0), default=None)
+        if not max_sell or not min_buy:
+            continue
+        if max_sell["exchange"] == min_buy["exchange"]:
+            continue
+        spread = ((max_sell["sell"] - min_buy["buy"]) / min_buy["buy"]) * 100 if min_buy["buy"] else 0
+        if spread > 0:
+            results.append({
+                "token": token,
+                "spread": round(spread, 2),
+                "buy_ex": min_buy["exchange"],
+                "sell_ex": max_sell["exchange"],
+                "buy": min_buy["buy"],
+                "sell": max_sell["sell"],
+                "star": spread >= 1.5
+            })
+    results.sort(key=lambda x: x["spread"], reverse=True)
+    return results

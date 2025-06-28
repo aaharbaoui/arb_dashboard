@@ -3,16 +3,9 @@ import json
 import time
 import httpx
 
-# ✅ Loads common token list from JSON
-def load_common_tokens():
-    with open("common_tokens.json", "r") as f:
-        return json.load(f)
-
-# ✅ Path to the cached token file
-CACHE_FILE = "utils/cache.json"
+CACHE_FILE = os.path.join(os.path.dirname(__file__), "cache.json")
 EXCHANGES = ["Binance", "OKX", "Bybit", "HTX"]
 
-# ✅ API endpoints for top tokens on each exchange
 ENDPOINTS = {
     "Binance": "https://api.binance.com/api/v3/exchangeInfo",
     "OKX": "https://www.okx.com/api/v5/public/instruments?instType=SPOT",
@@ -20,16 +13,21 @@ ENDPOINTS = {
     "HTX": "https://api.huobi.pro/v1/common/symbols"
 }
 
-# ✅ Load tokens from cache if not expired (1 day = 86400 seconds)
+def load_common_tokens():
+    try:
+        with open("common_tokens.json", "r") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
 def load_cached_tokens():
     if os.path.exists(CACHE_FILE):
         with open(CACHE_FILE, "r") as f:
             data = json.load(f)
-            if time.time() - data["timestamp"] < 86400:
-                return data["tokens"]
-    return None
+            if time.time() - data.get("timestamp", 0) < 86400:
+                return data.get("tokens", []) or []
+    return []
 
-# ✅ Save tokens to cache with timestamp
 def save_tokens_to_cache(tokens):
     with open(CACHE_FILE, "w") as f:
         json.dump({
@@ -37,68 +35,61 @@ def save_tokens_to_cache(tokens):
             "tokens": tokens
         }, f)
 
-# ✅ Format tokens to a clean /USDT symbol
 def format_token(symbol):
-    return symbol.upper().replace("_", "").replace("-", "").replace("USDT", "") + "/USDT"
+    # Ensure format is ALWAYS XXX/USDT
+    s = symbol.upper().replace("_", "").replace("-", "")
+    if not s.endswith("USDT"):
+        return None
+    return s.replace("USDT", "") + "/USDT"
 
-# ✅ Fetch tokens from Binance
 def fetch_binance_tokens():
     try:
         r = httpx.get(ENDPOINTS["Binance"], timeout=5)
         symbols = r.json()["symbols"]
-        return set(format_token(s["symbol"]) for s in symbols if s["quoteAsset"] == "USDT" and s["status"] == "TRADING")
+        return set(filter(None, (format_token(s["symbol"]) for s in symbols if s["quoteAsset"] == "USDT" and s["status"] == "TRADING")))
     except Exception as e:
         print(f"[⚠️ Binance error] {e}")
         return set()
 
-# ✅ Fetch tokens from OKX
 def fetch_okx_tokens():
     try:
         r = httpx.get(ENDPOINTS["OKX"], timeout=5)
-        instruments = r.json()["data"]
-        return set(format_token(s["instId"]) for s in instruments if s["quoteCcy"] == "USDT")
+        instruments = r.json().get("data", [])
+        return set(filter(None, (format_token(s["instId"]) for s in instruments if s.get("quoteCcy") == "USDT")))
     except Exception as e:
         print(f"[⚠️ OKX error] {e}")
         return set()
 
-# ✅ Fetch tokens from Bybit
 def fetch_bybit_tokens():
     try:
         r = httpx.get(ENDPOINTS["Bybit"], timeout=5)
-        data = r.json()["result"]["list"]
-        return set(format_token(s["symbol"]) for s in data if s["quoteCoin"] == "USDT")
+        data = r.json().get("result", {}).get("list", [])
+        return set(filter(None, (format_token(s["symbol"]) for s in data if s.get("quoteCoin") == "USDT")))
     except Exception as e:
         print(f"[⚠️ Bybit error] {e}")
         return set()
 
-# ✅ Fetch tokens from HTX
 def fetch_htx_tokens():
     try:
         r = httpx.get(ENDPOINTS["HTX"], timeout=5)
-        data = r.json()["data"]
-        return set(format_token(s["symbol"]) for s in data if s["quote-currency"] == "usdt")
+        data = r.json().get("data", [])
+        return set(filter(None, (format_token(s["symbol"]) for s in data if s.get("quote-currency") == "usdt")))
     except Exception as e:
         print(f"[⚠️ HTX error] {e}")
         return set()
 
-# ✅ Get intersection of all tokens (only those common across all exchanges)
-def get_top_common_tokens(limit=300):
-    cached = load_cached_tokens()
-    if cached:
-        return cached
-
-    print("[🔄 CACHE REFRESH] Fetching top tokens from all exchanges...")
-
-    sets = [
+def refresh_and_cache_tokens():
+    # Get intersection of all tokens (common across all exchanges)
+    token_sets = [
         fetch_binance_tokens(),
         fetch_okx_tokens(),
         fetch_bybit_tokens(),
         fetch_htx_tokens()
     ]
-
-    common = set.intersection(*sets)
-    top = sorted(list(common))[:limit]
-
-    save_tokens_to_cache(top)
-    print(f"[✅ CACHE READY] {len(top)} common tokens cached.")
-    return top
+    # Filter out None and empty sets
+    token_sets = [s for s in token_sets if s]
+    if not token_sets:
+        return []
+    tokens = list(set.intersection(*token_sets))
+    save_tokens_to_cache(tokens)
+    return tokens
