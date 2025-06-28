@@ -3,41 +3,186 @@
 <head>
   <meta charset="UTF-8">
   <title>Real-Time Crypto Arbitrage Dashboard</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <!-- Link Tailwind CSS if needed -->
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+  <script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        colors: {
+          primary: {
+            "50": "#eff6ff", "100": "#dbeafe", "200": "#bfdbfe", "300": "#93c5fd",
+            "400": "#60a5fa", "500": "#3b82f6", "600": "#2563eb", "700": "#1d4ed8",
+            "800": "#1e40af", "900": "#1e3a8a", "950": "#172554"
+          }
+        }
+      },
+      fontFamily: {
+        body: ['Inter', 'ui-sans-serif', 'system-ui', 'Segoe UI', 'Roboto', 'Arial', 'sans-serif'],
+        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'Segoe UI', 'Roboto', 'Arial', 'sans-serif']
+      }
+    }
+  }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-primary-950 min-h-screen text-primary-100 flex flex-col items-center">
-  <header class="w-full py-6 flex flex-col items-center relative">
-    <h1 class="text-4xl font-bold text-center">Real-Time Crypto Arbitrage Dashboard</h1>
-    <span class="absolute left-4 bottom-1 text-xs text-primary-400 italic">developed by Amine</span>
-  </header>
+<body>
+  <main class="max-w-screen-xl mx-auto px-4 py-8 font-sans text-white space-y-10">
+    <header class="mb-6">
+      <h1 class="text-4xl font-bold text-primary-400 text-center mb-2">
+        Real-Time Crypto Arbitrage Dashboard
+      </h1>
+      <div class="flex justify-center items-center">
+        <span class="text-sm text-primary-300 italic" style="margin-right:auto;">Developed by Amine</span>
+      </div>
+    </header>
 
-  <main class="w-full max-w-5xl flex-grow">
-    <section class="mt-6">
-      <h2 class="text-2xl font-semibold text-center mb-2">Top 5 High Spread Tokens</h2>
-      <!-- Your Top 5 Spread Table Here -->
+    <section>
+      <h2 class="text-2xl font-semibold text-primary-300 text-center mb-4">TOP 5 HIGH SPREAD TOKENS</h2>
+      {% include "top5_table.html" %}
     </section>
 
-    <section class="mt-10 flex flex-col items-center">
-      <h2 class="text-xl font-semibold mb-2">Simulate Profit</h2>
-      <form id="calcForm" class="flex flex-row items-center gap-3 py-2 px-2 bg-primary-900 rounded-md shadow mx-auto w-full max-w-xl justify-center">
-        <input id="tokenInput" type="text" placeholder="Token (e.g. BTC/USDT)" class="input px-2 py-1 rounded text-black bg-gray-100" />
-        <input id="amount" type="number" placeholder="Amount $" class="input px-2 py-1 rounded text-black bg-gray-100" />
-        <button type="button" id="calcBtn" class="btn px-4 py-1 bg-primary-500 hover:bg-primary-700 text-white rounded">Calculate Profit</button>
-        <span id="calcResult" class="ml-4 text-primary-300 font-bold"></span>
-      </form>
+    <section>
+      <h2 class="text-2xl font-semibold text-primary-300 text-center mb-4">Simulate Profit</h2>
+      <div class="flex justify-center">
+        <div class="w-full max-w-md">
+          {% include "calculator.html" %}
+        </div>
+      </div>
     </section>
 
-    <section class="mt-10">
-      <h2 class="text-xl font-semibold text-center mb-2">Exchanges Toggles</h2>
-      <!-- Your Exchange Toggles Here -->
+    <section>
+      <h2 class="text-2xl font-semibold text-primary-300 text-center mb-4">EXCHANGES TOGGLES</h2>
+      <div id="toggles" class="flex gap-4 flex-wrap justify-center"></div>
     </section>
 
-    <section class="mt-10">
-      <h2 class="text-xl font-semibold text-center mb-2">Live Token Prices</h2>
-      <!-- Your Live Prices Table Here -->
+    <section>
+      <h2 class="text-2xl font-semibold text-primary-300 text-center mb-4">LIVE TOKEN PRICES</h2>
+      <div class="tbl-content">
+        <table>
+          <thead id="prices-head"></thead>
+          <tbody id="prices-body"></tbody>
+        </table>
+      </div>
     </section>
+
+    <footer class="text-center text-xs text-primary-100 mt-10">
+      <code>uvicorn main:app --host=0.0.0.0 --port=$PORT</code>
+    </footer>
   </main>
+
+  <script>
+    const EX = {{ exchanges | tojson }};
+    let state = {{ enabled | tojson }};
+
+    function buildToggles() {
+      return EX.map(e => `
+        <label>
+          ${e}
+          <button class="toggle ${state[e] ? 'on' : ''}" data-ex="${e}">
+            <span class="slider"></span>
+          </button>
+        </label>
+      `).join('');
+    }
+
+    function updateToggles() {
+      document.getElementById("toggles").innerHTML = buildToggles();
+      document.querySelectorAll(".toggle").forEach(btn => {
+        btn.addEventListener("click", e => {
+          const ex = btn.dataset.ex;
+          state[ex] = !state[ex];
+          btn.classList.toggle("on", state[ex]);
+          loadData();
+        });
+      });
+    }
+
+    async function loadData() {
+      const resTop = await fetch("/api/top5", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(state)
+      });
+      const top5 = await resTop.json();
+
+      const resAll = await fetch("/api/allprices", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(state)
+      });
+      const all = await resAll.json();
+
+      document.getElementById("top5-body").innerHTML = top5.length
+        ? top5.map(t => `
+          <tr class="highlight">
+            <td class="text">${t.star ? '⭐️ ' : ''}${t.token}</td>
+            <td class="numeric">${t.spread}%</td>
+            <td class="text">${t.buy_ex}</td>
+            <td class="text">${t.sell_ex}</td>
+            <td class="text">${t.network}</td>
+            <td class="numeric">${t.withdrawal}</td>
+            <td class="numeric">${t.fees}</td>
+          </tr>
+        `).join('')
+        : `<tr><td colspan="7" class="text-center">No high-spread tokens found</td></tr>`;
+
+      let headRow = `<th>Token</th>`;
+      EX.filter(e => state[e]).forEach(e => {
+        headRow += `<th colspan="2">${e}</th>`;
+      });
+      document.getElementById("prices-head").innerHTML = `<tr>${headRow}</tr>`;
+
+      let rows = all.slice(0, 30).map(row => {
+        let cells = `<td class="text">${row.token}</td>`;
+        EX.filter(e => state[e]).forEach(() => {
+          const buy = typeof row.buy === "number" ? row.buy.toFixed(6) : "–";
+          const sell = typeof row.sell === "number" ? row.sell.toFixed(6) : "–";
+          cells += `<td class="buy numeric">${buy}</td><td class="sell numeric">${sell}</td>`;
+        });
+        return `<tr>${cells}</tr>`;
+      }).join('');
+      document.getElementById("prices-body").innerHTML = rows;
+
+      buildCalculator(top5[0]);
+    }
+
+    function buildCalculator(top) {
+      const tokenList = [ ];
+      const calcBtn = document.getElementById("calcBtn");
+      if (!calcBtn) return;
+
+      calcBtn.addEventListener("click", () => {
+        const inputToken = document.getElementById("tokenInput").value.trim();
+        const inputAmount = parseFloat(document.getElementById("amount").value);
+        const resultBox = document.getElementById("calcResult");
+
+        if (!tokenList.includes(inputToken)) {
+          resultBox.innerText = "❌ Invalid token";
+          return;
+        }
+
+        const spread = top && top.token === inputToken ? top.spread : null;
+
+        if (!spread) {
+          resultBox.innerText = "❌ No spread data";
+          return;
+        }
+
+        if (isNaN(inputAmount) || inputAmount <= 0) {
+          resultBox.innerText = "❌ Invalid amount";
+          return;
+        }
+
+        const profit = inputAmount * spread / 100;
+        resultBox.innerText = `≈ $${profit.toFixed(2)}`;
+      });
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      updateToggles();
+      loadData();
+    });
+  </script>
 </body>
 </html>
