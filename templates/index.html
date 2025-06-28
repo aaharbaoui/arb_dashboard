@@ -27,13 +27,14 @@
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body>
-  <main class="max-w-screen-xl mx-auto px-4 py-8 font-sans text-white space-y-10">
+  <main class="max-w-screen-xl mx-auto px-4 py-8 font-sans text-white space-y-10 relative">
     <header class="mb-6">
       <h1 class="text-4xl font-bold text-primary-400 text-center mb-2">
         Real-Time Crypto Arbitrage Dashboard
       </h1>
-      <div class="flex justify-center items-center">
-        <span class="text-sm text-primary-300 italic" style="margin-right:auto;">Developed by Amine</span>
+      <!-- "Developed by Amine" - oblique, small, right under the dashboard title, aligned right -->
+      <div class="flex justify-end mt-2">
+        <span class="text-sm text-primary-300 italic mr-2">Developed by Amine</span>
       </div>
     </header>
 
@@ -45,8 +46,10 @@
     <section>
       <h2 class="text-2xl font-semibold text-primary-300 text-center mb-4">Simulate Profit</h2>
       <div class="flex justify-center">
-        <div class="w-full max-w-md">
-          {% include "calculator.html" %}
+        <div class="w-full max-w-md rounded-lg shadow-lg" style="background-color: #1e3a8a;">
+          <div class="py-6 px-5">
+            {% include "calculator.html" %}
+          </div>
         </div>
       </div>
     </section>
@@ -65,10 +68,6 @@
         </table>
       </div>
     </section>
-
-    <footer class="text-center text-xs text-primary-100 mt-10">
-      <code>uvicorn main:app --host=0.0.0.0 --port=$PORT</code>
-    </footer>
   </main>
 
   <script>
