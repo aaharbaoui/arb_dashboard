@@ -112,11 +112,11 @@ async def fetch_bitget(symbol):
 # List of exchange fetchers
 EXCHANGE_FUNCTIONS = [
     fetch_binance,
-    fetch_okx,
+    #fetch_okx,
     fetch_bybit,
-    fetch_mexc,
+    #fetch_mexc,
     fetch_htx,
-    fetch_bitget
+    #fetch_bitget
 ]
 
 async def fetch_live_prices(symbols, enabled_exchanges=None):
