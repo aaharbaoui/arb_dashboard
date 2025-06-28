@@ -1,0 +1,26 @@
+{
+  "name": "arb_project",
+  "version": "1.0.0",
+  "description": "A FastAPI-powered dashboard for tracking real-time cryptocurrency arbitrage opportunities across multiple exchanges.",
+  "main": "index.js",
+  "scripts": {
+    "build:css": "npx tailwindcss -i ./static/src/tailwind.css -o ./static/dist/output.css --minify",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aaharbaoui/arb_dashboard.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/aaharbaoui/arb_dashboard/issues"
+  },
+  "homepage": "https://github.com/aaharbaoui/arb_dashboard#readme",
+  "devDependencies": {
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.3"
+  }
+}
