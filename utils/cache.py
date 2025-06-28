@@ -4,11 +4,10 @@ import time
 import httpx
 
 CACHE_FILE = os.path.join(os.path.dirname(__file__), "cache.json")
-EXCHANGES = ["Binance", "OKX", "Bybit", "HTX"]
+EXCHANGES = ["Binance", "Bybit", "HTX"]
 
 ENDPOINTS = {
     "Binance": "https://api.binance.com/api/v3/exchangeInfo",
-    "OKX": "https://www.okx.com/api/v5/public/instruments?instType=SPOT",
     "Bybit": "https://api.bybit.com/v5/market/instruments-info?category=spot",
     "HTX": "https://api.huobi.pro/v1/common/symbols"
 }
@@ -51,15 +50,6 @@ def fetch_binance_tokens():
         print(f"[⚠️ Binance error] {e}")
         return set()
 
-def fetch_okx_tokens():
-    try:
-        r = httpx.get(ENDPOINTS["OKX"], timeout=5)
-        instruments = r.json().get("data", [])
-        return set(filter(None, (format_token(s["instId"]) for s in instruments if s.get("quoteCcy") == "USDT")))
-    except Exception as e:
-        print(f"[⚠️ OKX error] {e}")
-        return set()
-
 def fetch_bybit_tokens():
     try:
         r = httpx.get(ENDPOINTS["Bybit"], timeout=5)
@@ -79,17 +69,22 @@ def fetch_htx_tokens():
         return set()
 
 def refresh_and_cache_tokens():
-    # Get intersection of all tokens (common across all exchanges)
     token_sets = [
         fetch_binance_tokens(),
-        fetch_okx_tokens(),
         fetch_bybit_tokens(),
         fetch_htx_tokens()
     ]
-    # Filter out None and empty sets
+    for name, s in zip(EXCHANGES, token_sets):
+        print(f"[DEBUG] {name} tokens: {len(s)}")
     token_sets = [s for s in token_sets if s]
     if not token_sets:
+        print("[DEBUG] No token sets available for intersection.")
         return []
+    # Try union instead of intersection if intersection is empty
     tokens = list(set.intersection(*token_sets))
+    if len(tokens) == 0:
+        tokens = list(set.union(*token_sets))
+        print("[DEBUG] Intersection empty, using union instead.")
+    print(f"[DEBUG] Final tokens: {len(tokens)}")
     save_tokens_to_cache(tokens)
     return tokens

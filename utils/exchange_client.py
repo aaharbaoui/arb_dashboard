@@ -7,6 +7,7 @@ async def fetch_binance(symbol):
         url = f"https://api.binance.com/api/v3/ticker/bookTicker?symbol={symbol_formatted}"
         async with httpx.AsyncClient() as client:
             resp = await client.get(url)
+        print(f"[DEBUG][Binance] {url} => {resp.status_code} {resp.text[:120]}")
         data = resp.json()
         return {
             "exchange": "Binance",
@@ -15,6 +16,7 @@ async def fetch_binance(symbol):
             "sell": float(data.get("askPrice", 0)),
         }
     except Exception as e:
+        print(f"[ERROR][Binance] {symbol} {e}")
         return {"exchange": "Binance", "token": symbol, "error": str(e)}
 
 async def fetch_okx(symbol):
@@ -23,6 +25,7 @@ async def fetch_okx(symbol):
         url = f"https://www.okx.com/api/v5/market/ticker?instId={symbol_formatted}"
         async with httpx.AsyncClient() as client:
             resp = await client.get(url)
+        print(f"[DEBUG][OKX] {url} => {resp.status_code} {resp.text[:120]}")
         data = resp.json().get("data", [{}])[0]
         return {
             "exchange": "OKX",
@@ -31,6 +34,7 @@ async def fetch_okx(symbol):
             "sell": float(data.get("askPx", 0)),
         }
     except Exception as e:
+        print(f"[ERROR][OKX] {symbol} {e}")
         return {"exchange": "OKX", "token": symbol, "error": str(e)}
 
 async def fetch_bybit(symbol):
@@ -39,6 +43,7 @@ async def fetch_bybit(symbol):
         url = f"https://api.bybit.com/v5/market/tickers?category=spot&symbol={symbol_formatted}"
         async with httpx.AsyncClient() as client:
             resp = await client.get(url)
+        print(f"[DEBUG][Bybit] {url} => {resp.status_code} {resp.text[:120]}")
         result = resp.json().get("result", {}).get("list", [{}])[0]
         return {
             "exchange": "Bybit",
@@ -47,6 +52,7 @@ async def fetch_bybit(symbol):
             "sell": float(result.get("ask1Price", 0)),
         }
     except Exception as e:
+        print(f"[ERROR][Bybit] {symbol} {e}")
         return {"exchange": "Bybit", "token": symbol, "error": str(e)}
 
 async def fetch_mexc(symbol):
@@ -55,6 +61,7 @@ async def fetch_mexc(symbol):
         url = f"https://api.mexc.com/api/v3/ticker/bookTicker?symbol={symbol_formatted}"
         async with httpx.AsyncClient() as client:
             resp = await client.get(url)
+        print(f"[DEBUG][MEXC] {url} => {resp.status_code} {resp.text[:120]}")
         data = resp.json()
         return {
             "exchange": "MEXC",
@@ -63,6 +70,7 @@ async def fetch_mexc(symbol):
             "sell": float(data.get("askPrice", 0)),
         }
     except Exception as e:
+        print(f"[ERROR][MEXC] {symbol} {e}")
         return {"exchange": "MEXC", "token": symbol, "error": str(e)}
 
 async def fetch_htx(symbol):
@@ -71,6 +79,7 @@ async def fetch_htx(symbol):
         url = f"https://api.huobi.pro/market/detail/merged?symbol={symbol_formatted}"
         async with httpx.AsyncClient() as client:
             resp = await client.get(url)
+        print(f"[DEBUG][HTX] {url} => {resp.status_code} {resp.text[:120]}")
         tick = resp.json().get("tick", {})
         return {
             "exchange": "HTX",
@@ -79,6 +88,7 @@ async def fetch_htx(symbol):
             "sell": float(tick.get("ask", [0])[0] if "ask" in tick else 0),
         }
     except Exception as e:
+        print(f"[ERROR][HTX] {symbol} {e}")
         return {"exchange": "HTX", "token": symbol, "error": str(e)}
 
 async def fetch_bitget(symbol):
@@ -87,6 +97,7 @@ async def fetch_bitget(symbol):
         url = f"https://api.bitget.com/api/v2/spot/market/ticker?symbol={symbol_formatted}"
         async with httpx.AsyncClient() as client:
             resp = await client.get(url)
+        print(f"[DEBUG][Bitget] {url} => {resp.status_code} {resp.text[:120]}")
         data = resp.json().get("data", {})
         return {
             "exchange": "Bitget",
@@ -95,6 +106,7 @@ async def fetch_bitget(symbol):
             "sell": float(data.get("sellOne", 0)),
         }
     except Exception as e:
+        print(f"[ERROR][Bitget] {symbol} {e}")
         return {"exchange": "Bitget", "token": symbol, "error": str(e)}
 
 # List of exchange fetchers

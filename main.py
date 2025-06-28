@@ -99,5 +99,12 @@ async def test_alert():
     })
     return {"ok": True, "message": "Alert sent."}
 
+@app.get("/admin/refresh-cache")
+async def admin_refresh_cache():
+    from utils.cache import refresh_and_cache_tokens
+    tokens = refresh_and_cache_tokens()
+    print(f"[ADMIN] Refreshed token cache: {len(tokens)} tokens. Sample: {tokens[:5]}")
+    return {"count": len(tokens), "tokens": tokens[:5]}
+
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
