@@ -34,24 +34,85 @@
     </section>
 
     <section>
-      <h2 class="text-2xl font-semibold text-primary-300 text-center mb-4">EXCHANGES TOGGLES</h2>
-      <div id="toggles" class="flex gap-4 flex-wrap justify-center"></div>
-    </section>
-
-    <section>
       <h2 class="text-2xl font-semibold text-primary-300 text-center mb-4">LIVE TOKEN PRICES</h2>
       <div class="tbl-content">
         <table>
-          <thead id="prices-head"></thead>
+          <thead id="prices-head">
+            <tr>
+              <th>TOKEN</th>
+              <th>BINANCE</th>
+              <th>BYBIT</th>
+              <th>OKX</th>
+              <th>MEXC</th>
+              <th>HTX</th>
+              <th>BITGET</th>
+            </tr>
+          </thead>
           <tbody id="prices-body"></tbody>
         </table>
       </div>
     </section>
   </main>
 
-  <!-- ...all your JS logic and functions as before... -->
   <script>
-    // ...unchanged JavaScript code...
+    // --- LIVE TOKEN PRICES TABLE ---
+    async function loadPrices() {
+      try {
+        const resp = await fetch('/api/allprices');
+        const data = await resp.json();
+        const exchanges = ["Binance","Bybit","OKX","MEXC","HTX","Bitget"];
+        let body = "";
+        data.forEach(row => {
+          body += `<tr><td>${row.token}</td>`;
+          exchanges.forEach(ex => {
+            const price = row.prices[ex];
+            if (price && price.buy !== undefined && price.sell !== undefined) {
+              body += `<td>
+                <div style="color:#00FF9E;font-weight:700;">${price.buy ?? '-'}</div>
+                <div style="color:#FF5A5A;font-weight:700;">${price.sell ?? '-'}</div>
+              </td>`;
+            } else {
+              body += `<td>-</td>`;
+            }
+          });
+          body += "</tr>";
+        });
+        document.getElementById("prices-body").innerHTML = body;
+      } catch (e) {
+        document.getElementById("prices-body").innerHTML = "<tr><td colspan='7'>Failed to load data</td></tr>";
+      }
+    }
+
+    // --- TOP 5 TABLE ---
+    async function loadTop5() {
+      try {
+        const resp = await fetch('/api/top5');
+        const result = await resp.json();
+        const data = result.data || [];
+        let rows = '';
+        data.forEach(token => {
+          rows += `<tr>
+            <td>${token.token || '-'}</td>
+            <td>${token.spread !== undefined ? token.spread : '-'}</td>
+            <td>${token.buy_ex || '-'}</td>
+            <td>${token.sell_ex || '-'}</td>
+            <td>${token.network || '-'}</td>
+            <td>${token.access || '-'}</td>
+            <td>${token.fees || '-'}</td>
+          </tr>`;
+        });
+        const el = document.getElementById('top5-body');
+        if (el) el.innerHTML = rows;
+      } catch (e) {
+        const el = document.getElementById('top5-body');
+        if (el) el.innerHTML = '<tr><td colspan="7">Failed to load data</td></tr>';
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      loadTop5();
+      loadPrices();
+    });
   </script>
 </body>
 </html>

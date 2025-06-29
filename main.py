@@ -1,5 +1,6 @@
 import os
 import uvicorn
+import json
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
@@ -19,12 +20,18 @@ def group_prices_by_token(flat_prices, exchanges):
         exchange = p.get("exchange")
         if not token or not exchange:
             continue
-        token_map[token][exchange] = {"buy": p.get("buy"), "sell": p.get("sell")}
+        # Defensive: ensure 'withdrawal' is always present if needed
+        entry = {
+            "buy": p.get("buy"),
+            "sell": p.get("sell"),
+            "withdrawal": p.get("withdrawal", None)
+        }
+        token_map[token][exchange] = entry
     table = []
     for token, ex_prices in token_map.items():
         row = {"token": token, "prices": {}}
         for ex in exchanges:
-            row["prices"][ex] = ex_prices.get(ex, {"buy": None, "sell": None})
+            row["prices"][ex] = ex_prices.get(ex, {"buy": None, "sell": None, "withdrawal": None})
         table.append(row)
     return table
 
@@ -58,7 +65,7 @@ async def root(request: Request):
         "enabled": ENABLED_EXCHANGES
     })
 
-@app.post("/api/top5")
+@app.api_route("/api/top5", methods=["GET", "POST"])
 async def top5_api():
     symbols = get_symbols()
     if not symbols:
@@ -75,13 +82,17 @@ async def top5_api():
         return {"data": top_tokens[:5]}
     except Exception as e:
         print(f"[ERROR][/api/top5] {e}")
-        return JSONResponse({"data": [], "error": str(e)}, status_code=500)
+        return JSONResponse({"data": [], "error": str(e)}, status_code=500)  # removed content=top5_list
 
-@app.post("/api/allprices")
+@app.api_route("/api/allprices", methods=["GET", "POST"])
 async def all_prices_api(req: Request):
     try:
-        body = await req.json()
-        enabled_exchanges = [ex for ex, state in body.items() if state]
+        if req.method == "POST":
+            body = await req.json()
+            enabled_exchanges = [ex for ex, state in body.items() if state]
+        else:
+            # For GET requests, enable all by default or pick from query params
+            enabled_exchanges = list(ENABLED_EXCHANGES.keys())
         tokens = load_common_tokens() or []
         tokens = tokens[:20]  # limit for speed
         if not tokens:
@@ -91,6 +102,7 @@ async def all_prices_api(req: Request):
         return JSONResponse(table)
     except Exception as e:
         print(f"[ERROR][/api/allprices] {e}")
+        print(f"[ERROR][allprices] Failed to parse response: {e}")
         return JSONResponse([], status_code=500)
 
 @app.get("/test-alert")

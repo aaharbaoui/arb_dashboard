@@ -26,7 +26,10 @@ async def fetch_okx(symbol):
         async with httpx.AsyncClient() as client:
             resp = await client.get(url)
         print(f"[DEBUG][OKX] {url} => {resp.status_code} {resp.text[:120]}")
-        data = resp.json().get("data", [{}])[0]
+        data_list = resp.json().get("data", [])
+        if not data_list or not isinstance(data_list, list):
+            raise ValueError("No data returned from OKX")
+        data = data_list[0]
         return {
             "exchange": "OKX",
             "token": symbol,
@@ -44,7 +47,8 @@ async def fetch_bybit(symbol):
         async with httpx.AsyncClient() as client:
             resp = await client.get(url)
         print(f"[DEBUG][Bybit] {url} => {resp.status_code} {resp.text[:120]}")
-        result = resp.json().get("result", {}).get("list", [{}])[0]
+        result_list = resp.json().get("result", {}).get("list", [])
+        result = result_list[0] if result_list else {}
         return {
             "exchange": "Bybit",
             "token": symbol,
@@ -98,7 +102,9 @@ async def fetch_bitget(symbol):
         async with httpx.AsyncClient() as client:
             resp = await client.get(url)
         print(f"[DEBUG][Bitget] {url} => {resp.status_code} {resp.text[:120]}")
-        data = resp.json().get("data", {})
+        data = resp.json().get("data", None)
+        if not data or not isinstance(data, dict):
+            raise ValueError("No data returned from Bitget")
         return {
             "exchange": "Bitget",
             "token": symbol,
@@ -112,11 +118,11 @@ async def fetch_bitget(symbol):
 # List of exchange fetchers
 EXCHANGE_FUNCTIONS = [
     fetch_binance,
-    #fetch_okx,
+    fetch_okx,
     fetch_bybit,
-    #fetch_mexc,
+    fetch_mexc,
     fetch_htx,
-    #fetch_bitget
+    fetch_bitget
 ]
 
 async def fetch_live_prices(symbols, enabled_exchanges=None):
@@ -166,7 +172,8 @@ def calculate_top_spreads(all_prices):
                 "sell_ex": max_sell["exchange"],
                 "buy": min_buy["buy"],
                 "sell": max_sell["sell"],
-                "star": spread >= 1.5
+                "star": spread >= 1.5,
+                "withdrawal": None    # <-- Add this line
             })
     results.sort(key=lambda x: x["spread"], reverse=True)
     return results
